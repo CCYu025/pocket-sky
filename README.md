@@ -28,6 +28,8 @@ E2E_SCREENSHOTS=1 E2E_REAL_FONTS=1 npm run test:e2e
 
 `E2E_REAL_FONTS=1` 會載入真實的 Google Fonts，整個 E2E（含橫向溢位與版面斷言）即以真實字型執行；需要可連外網路。
 
+本機開發與 service worker：已安裝 SW 後，scope 根目錄的導覽是 cache-first，會一直顯示舊 HTML，直到使用者接受更新。開發時請在 DevTools → Application → Service Workers 勾選「Update on reload」，或直接 Unregister。`?nosw` 只是略過註冊，不會解除已存在的 worker。
+
 架構與模組介面：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ## 資料來源

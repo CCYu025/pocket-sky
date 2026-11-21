@@ -17,9 +17,8 @@ export const UPDATE_TEXT = "有新版本";
 export const UPDATED_TEXT = "已更新，重新整理以載入新版";
 
 /**
- * Render the update banner (once) above the sticky nav. It is inserted empty and its text is set on the next tick
- * (a `role="status"` region only announces changes after it exists); `say` is also called so the page's own
- * live region can speak it.
+ * Render the update banner (once) above the sticky nav. The banner is a plain container (no live-region role): the
+ * single announcement channel is `say` (the `ps:announce` event, forwarded to the page's persistent `#live` region).
  * @param {Document} doc
  * @param {() => void} onReload Called when the key is pressed.
  * @param {{text?: string, say?: (text: string) => void}} [o] Initial text (default `有新版本`) and announcer.
@@ -31,7 +30,6 @@ export function showBanner(doc, onReload, { text = UPDATE_TEXT, say = () => {} }
   const bar = doc.createElement("div");
   bar.id = "update-banner";
   bar.className = "update-banner";
-  bar.setAttribute("role", "status");
   const label = doc.createElement("span");
   const btn = doc.createElement("button");
   btn.type = "button";
@@ -50,7 +48,7 @@ export function showBanner(doc, onReload, { text = UPDATE_TEXT, say = () => {} }
 }
 
 /**
- * Set the banner text on the next tick and announce it.
+ * Set the banner text on the next tick and announce it through `say` (the only announcement channel).
  * @param {HTMLElement} bar
  * @param {string} text
  * @param {(text: string) => void} [say]

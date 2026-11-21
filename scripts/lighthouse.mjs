@@ -123,7 +123,7 @@ function notes(dir) {
   const before = path.join(dir, `lighthouse-${OUT}-before.json`);
   if (existsSync(before)) {
     const b = JSON.parse(readFileSync(before, "utf8"));
-    out.push("## Before the fixes", "", `Baseline (\`lighthouse-${OUT}-before.json\`): ` + Object.entries(b.scores).map(([k, v]) => `${k} ${v}`).join(", ") + `. SEO was missing a meta description and a robots.txt.`, "");
+    out.push("## Before the fixes", "", `Baseline (\`lighthouse-${OUT}-before.json\`): ` + Object.entries(b.scores).map(([k, v]) => `${k} ${v}`).join(", ") + `. SEO was missing a meta description.`, "");
   }
   out.push(
     "## Known artifact",

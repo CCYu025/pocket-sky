@@ -34,7 +34,7 @@ Installability (Chrome `Page.getInstallabilityErrors`; Lighthouse 13 no longer h
 
 ## Before the fixes
 
-Baseline (`lighthouse-m5-before.json`): performance 97, accessibility 100, best-practices 100, seo 82. SEO was missing a meta description and a robots.txt.
+Baseline (`lighthouse-m5-before.json`): performance 97, accessibility 100, best-practices 100, seo 82. SEO was missing a meta description.
 
 ## Known artifact
 

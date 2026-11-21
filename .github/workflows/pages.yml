@@ -23,7 +23,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - run: npm test
 
   # Same steps as the `e2e` job of ci.yml: nothing is deployed unless the browser tests pass too.
@@ -52,7 +51,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       # No `npm ci`: building the site uses only Node built-ins.
       - name: Assemble _site (runtime files only, sw-assets.js and the sw.js version stamp included)
         run: node scripts/build-site.mjs

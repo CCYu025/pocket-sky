@@ -56,8 +56,8 @@ test("waiting worker shows one banner; click posts SKIP_WAITING; controllerchang
   await registerSW({ navigator: { serviceWorker: f.sw }, document: doc, location: { search: "", reload: () => reloads++ }, win: {} });
   const bar = doc.getElementById("update-banner");
   assert.ok(bar);
-  assert.equal(bar.attrs.role, "status");
-  assert.equal(bar.children[0].textContent, "", "inserted empty so the live region announces the text that follows");
+  assert.equal(bar.attrs.role, undefined, "plain container: announcements go through the #live region only");
+  assert.equal(bar.children[0].textContent, "", "inserted empty, text set on the next tick");
   await tick();
   assert.equal(bar.children[0].textContent, "有新版本");
   assert.equal(bar.children[1].textContent, "重新整理");
