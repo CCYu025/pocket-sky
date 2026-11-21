@@ -7,12 +7,22 @@ import { seg7Svg, escapeHtml as esc } from "../seg7.js";
 import { morphHtml } from "../morph.js";
 import { headline } from "../../domain/summary.js";
 import {
-  compassZh, uvBand, aqiBand, humidityWord, intText, deltaText, dateLabel, clockOf, clockAt,
+  compassZh, uvBand, aqiBand, humidityWord, intText, deltaText, dateLabel, clockOf, clockAt, dataBannerText, OFFLINE_EMPTY_TEXT,
   daylightProgress, countdownText,
 } from "../format.js";
 
 const BAR_COUNT = 8;
 export const ERROR_TEXT = "無法取得天氣資料，請檢查網路後再試。";
+
+/**
+ * Error message for a controller error: the offline marker (`{ offline: true }`, nothing cached and no network) reads
+ * `離線中，沒有可顯示的資料`; the 重試 key is then omitted (the app refreshes by itself on `online`).
+ * @param {*} error
+ * @returns {string}
+ */
+export function errorText(error) {
+  return error?.offline ? OFFLINE_EMPTY_TEXT : ERROR_TEXT;
+}
 
 /**
  * Build the five metric cards' content.
@@ -138,12 +148,12 @@ export function todayHtml(state) {
       `<div class="alert" data-k="alert"><span class="alert-text">${esc(alert.title)}・${esc(alert.detail)}</span><button type="button" class="alert-close" data-action="dismiss-alert" aria-label="關閉提醒">×</button></div>`,
     );
   }
-  if (status === "stale" && hasVm) {
-    parts.push(`<p class="banner" data-k="stale">資料時間 ${esc(clockAt(state.fetchedAt ?? 0, vm.location.utcOffsetSeconds))}・無法更新</p>`);
+  if ((status === "stale" || state.offline) && hasVm && status !== "error" && status !== "loading") {
+    parts.push(`<p class="banner" data-k="stale">${esc(dataBannerText({ fetchedAt: state.fetchedAt, vm, refreshing: state.refreshing, offline: state.offline }))}</p>`);
   }
   if (hasVm && vm.stale?.current) parts.push(`<p class="banner" data-k="obs">觀測資料較舊，顯示預報值</p>`);
   if (status === "error") {
-    parts.push(`<div class="error-card" data-k="error"><p>${esc(ERROR_TEXT)}</p><button type="button" class="key" data-action="retry">重試</button></div>`);
+    parts.push(`<div class="error-card" data-k="error"><p>${esc(errorText(state.error))}</p>${state.error?.offline ? "" : '<button type="button" class="key" data-action="retry">重試</button>'}</div>`);
   }
   const show = status === "loading" || status === "error" ? null : vm;
   parts.push(hero(show, state.fetchedAt));

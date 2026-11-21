@@ -4,7 +4,7 @@
  * re-renders (ticks, refreshes) are silent.
  * @module ui/announce
  */
-import { ERROR_TEXT } from "./views/today.js";
+import { errorText } from "./views/today.js";
 import { SCENARIO_NAMES } from "./route.js";
 
 export const STALE_TEXT = "資料已過期";
@@ -28,7 +28,7 @@ export function createAnnouncer() {
       const msgs = [];
       if (nowAlertId && nowAlertId !== alertId && !(alertId && state.alert.continuation)) msgs.push(state.alert.title);
       if (nowStale && !stale) msgs.push(STALE_TEXT);
-      if (nowError && !error) msgs.push(ERROR_TEXT);
+      if (nowError && !error) msgs.push(errorText(state.error));
       const nowUpdates = state?.locationUpdates ?? 0;
       if (nowUpdates > updates) msgs.push(LOCATION_UPDATED_TEXT);
       updates = nowUpdates;

@@ -192,7 +192,7 @@ export function commuteHtml(state, ui) {
   const legSlots = model ? model.ordered.map((l, i) => legHtml(l, l, i === firstWarn)) : LEGS.map((d) => legHtml(null, d));
   return [
     `<div class="work" data-k="c-note"><p class="note">${esc(workNote(ui.work ?? null))}</p><button type="button" class="key key--sm" id="c-set-work" data-action="open-picker" data-mode="work">設定公司地點</button></div>`,
-    model?.workState === "error" ? `<div class="banner banner--row" data-k="c-work-err"><span>公司天氣暫時無法取得</span><button type="button" class="key key--sm" id="c-retry" data-action="retry-place" data-id="${esc(ui.work.id)}">重試</button></div>` : "",
+    model?.workState === "error" && work.entry?.error?.offline ? `<p class="banner" data-k="c-work-err">離線中，沒有公司的資料</p>` : model?.workState === "error" ? `<div class="banner banner--row" data-k="c-work-err"><span>公司天氣暫時無法取得</span><button type="button" class="key key--sm" id="c-retry" data-action="retry-place" data-id="${esc(ui.work.id)}">重試</button></div>` : "",
     `<section class="hero" data-k="c-hero" aria-label="通勤時段天氣"><div class="lcd lcd--legs">${legSlots.join("")}</div></section>`,
     `<div class="fields" data-k="c-fields">${selectHtml(LEGS[0], c.out)}${selectHtml(LEGS[1], c.back)}</div>`,
     `<h1 class="headline headline--sm" data-k="c-headline">${esc(title)}</h1>`,

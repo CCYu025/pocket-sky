@@ -5,9 +5,9 @@
  */
 import { escapeHtml as esc } from "../seg7.js";
 import { morphHtml } from "../morph.js";
-import { clockAt } from "../format.js";
+import { dataBannerText } from "../format.js";
 import { scenarioHref } from "../route.js";
-import { ERROR_TEXT } from "./today.js";
+import { errorText } from "./today.js";
 import { commuteHtml } from "./commute.js";
 import { exerciseHtml } from "./exercise.js";
 import { tripHtml } from "./trip.js";
@@ -39,11 +39,11 @@ export function outingHtml(state, ui) {
     parts.push(tripHtml(state, ui));
     return parts.join("\n");
   }
-  if (status === "stale" && vm) {
-    parts.push(`<p class="banner" data-k="stale">資料時間 ${esc(clockAt(state.fetchedAt ?? 0, vm.location.utcOffsetSeconds))}・無法更新</p>`);
+  if ((status === "stale" || state.offline) && vm && status !== "error" && status !== "loading") {
+    parts.push(`<p class="banner" data-k="stale">${esc(dataBannerText({ fetchedAt: state.fetchedAt, vm, refreshing: state.refreshing, offline: state.offline }))}</p>`);
   }
   if (status === "error") {
-    parts.push(`<div class="error-card" data-k="error"><p>${esc(ERROR_TEXT)}</p><button type="button" class="key" data-action="retry">重試</button></div>`);
+    parts.push(`<div class="error-card" data-k="error"><p>${esc(errorText(state.error))}</p>${state.error?.offline ? "" : '<button type="button" class="key" data-action="retry">重試</button>'}</div>`);
   }
   if (status !== "loading" && status !== "error" && vm && !vm.hoursAvailable) {
     parts.push(`<p class="banner" data-k="no-hours">沒有逐時資料，無法規劃外出</p>`);

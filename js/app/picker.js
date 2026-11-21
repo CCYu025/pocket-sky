@@ -36,11 +36,12 @@ function selectorOf(el) {
  * @param {typeof setTimeout} [deps.setTimer] Defaults call `globalThis.setTimeout` as a method: an unbound `setTimeout` loses its `this`
  *   under Playwright's fake clock, so `clearTimeout` would silently not clear.
  * @param {typeof clearTimeout} [deps.clearTimer]
+ * @param {() => boolean} [deps.onLine] Connectivity probe (default `navigator.onLine !== false`). Offline, a search makes no request and the live text reads `離線中，無法搜尋`.
  * @param {(dialog: HTMLElement, model: object) => void} [deps.renderView] Renders the dialog contents (default `renderPicker`;
  *   unit tests pass a no-op because they have no DOM).
  * @returns {{open: (mode?: 'current'|'work'|'trip', opener?: Element|null) => void, close: () => void, isOpen: () => boolean, opener: () => (Element|null), getState: () => object}}
  */
-export function createPicker({ dialog, storage, controller, search, onChange, fallbackFocus = () => null, setTimer = (fn, ms) => globalThis.setTimeout(fn, ms), clearTimer = (id) => globalThis.clearTimeout(id), renderView = renderPicker }) {
+export function createPicker({ dialog, storage, controller, search, onChange, fallbackFocus = () => null, setTimer = (fn, ms) => globalThis.setTimeout(fn, ms), clearTimer = (id) => globalThis.clearTimeout(id), onLine = () => globalThis.navigator?.onLine !== false, renderView = renderPicker }) {
   let state = initialPicker("current");
   let seq = 0; // search generation: only the latest search may update the state
   let timer = null;
@@ -67,6 +68,7 @@ export function createPicker({ dialog, storage, controller, search, onChange, fa
     const q = (input()?.value ?? state.query).trim();
     if (!q) return;
     const mine = ++seq;
+    if (!onLine()) return dispatch({ type: "offline" });
     dispatch({ type: "search" });
     try {
       const { results, usedQuery } = await searchWithFallback(q, search);
