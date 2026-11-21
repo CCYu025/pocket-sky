@@ -125,10 +125,10 @@ export const OFFLINE_EMPTY_TEXT = "離線中，沒有可顯示的資料";
 
 /**
  * Text of the data-age banner shown over cached data (Today, commute, exercise, trip).
- * - offline: `離線中・顯示 HH:MM 的資料`
+ * - offline: `離線中・顯示 HH:MM 的資料` (`MM/DD HH:MM` beyond 24 h, same stamp rule as below)
  * - refresh in flight: `資料時間 HH:MM・更新中…`
  * - refresh failed: `資料時間 HH:MM・無法更新`
- * The stamp carries the date (`MM/DD HH:MM`) when the data is more than 24 h old (the `maxStaleMs` case).
+ * The stamp carries the date (`MM/DD HH:MM`) when the data is more than 24 h old (the `maxStaleMs` case), in every variant.
  * @param {{fetchedAt: (number|null|undefined), vm: object, refreshing?: boolean, offline?: boolean}} p
  * @returns {string}
  */
@@ -136,11 +136,11 @@ export function dataBannerText({ fetchedAt, vm, refreshing = false, offline = fa
   const off = vm?.location?.utcOffsetSeconds ?? 0;
   const ms = fetchedAt ?? 0;
   const clock = clockAt(ms, off);
-  if (offline) return `離線中・顯示 ${clock} 的資料`;
   const iso = new Date(ms + off * 1000).toISOString();
   const nowLocal = Date.parse(`${vm?.now?.minuteKey ?? ""}:00Z`);
   const old = Number.isFinite(nowLocal) && nowLocal - (ms + off * 1000) > 24 * 3600 * 1000;
   const stamp = old ? `${iso.slice(5, 7)}/${iso.slice(8, 10)} ${clock}` : clock;
+  if (offline) return `離線中・顯示 ${stamp} 的資料`;
   return `資料時間 ${stamp}・${refreshing ? "更新中…" : "無法更新"}`;
 }
 

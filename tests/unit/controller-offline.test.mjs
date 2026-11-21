@@ -191,8 +191,8 @@ test("offline with a cache: no request at all, data shown as stale + offline (an
   assert.equal(st.offline, true);
   assert.equal(st.refreshing, false);
   assert.ok(st.vm.air, "cached air is used too");
-  assert.equal(dataBannerText({ fetchedAt: st.fetchedAt, vm: st.vm, offline: true }), "離線中・顯示 14:20 的資料");
-  assert.match(todayHtml(st), /離線中・顯示 14:20 的資料/);
+  assert.equal(dataBannerText({ fetchedAt: st.fetchedAt, vm: st.vm, offline: true }), "離線中・顯示 11/21 14:20 的資料", "40 h old: the date joins the stamp");
+  assert.match(todayHtml(st), /離線中・顯示 11\/21 14:20 的資料/);
 });
 
 test("offline without a cache: error state with the offline message, no request, no retry key", async () => {
@@ -292,4 +292,64 @@ test("offline: extra places show cached data, or the offline error when nothing 
   await tick(); await tick(); await tick(); await tick();
   assert.equal(c.store.get().places[placeKey(WORK)].status, "ready");
   assert.deepEqual(s.kinds(), { forecast: 2, air: 2 }, "current place + the wanted work place, once each");
+});
+
+test("offline `refreshIfStale` keeps ready data ready (no stale transition, no announcement, no request)", async () => {
+  const s = setup();
+  const c = s.make();
+  await c.init();
+  await c.ensurePlace(WORK);
+  const a = createAnnouncer();
+  a.next(c.store.get());
+  s.clock.t = NOW + 20 * 60 * 1000; // the cache entries are no longer fresh
+  s.calls.length = 0;
+  s.net.online = false;
+  c.goOffline();
+  await c.refreshIfStale({ wanted: [placeKey(WORK)] });
+  const st = c.store.get();
+  assert.equal(s.calls.length, 0);
+  assert.equal(st.offline, true);
+  assert.equal(st.status, "ready", "still ready, only the offline banner shows");
+  assert.equal(st.places[placeKey(WORK)].status, "ready");
+  assert.equal(a.next(st), null, "nothing to announce");
+});
+
+test("a no-cache request in flight when the device goes offline ends in the offline message, not the generic error", async () => {
+  const s = setup();
+  const g = gate();
+  s.net.hold = g.p;
+  const c = s.make();
+  const init = c.init();
+  await tick(); await tick();
+  assert.equal(c.store.get().status, "loading");
+  s.net.online = false; // the connection drops while the request is pending
+  c.goOffline();
+  s.net.fail = true;
+  g.release();
+  await init;
+  await tick(); await tick();
+  const st = c.store.get();
+  assert.equal(st.status, "error");
+  assert.equal(st.error, OFFLINE_ERROR);
+  assert.equal(errorText(st.error), OFFLINE_EMPTY_TEXT);
+  assert.equal(st.offline, true);
+});
+
+test("the same for an extra place whose first request fails while offline", async () => {
+  const s = setup();
+  const c = s.make();
+  await c.init();
+  const g = gate();
+  s.net.hold = g.p;
+  const p = c.ensurePlace(WORK);
+  await tick(); await tick();
+  s.net.online = false;
+  c.goOffline();
+  s.net.fail = true;
+  g.release();
+  await p;
+  await tick(); await tick();
+  const e = c.store.get().places[placeKey(WORK)];
+  assert.equal(e.status, "error");
+  assert.equal(e.error, OFFLINE_ERROR);
 });

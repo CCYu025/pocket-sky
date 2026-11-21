@@ -91,7 +91,7 @@ test("offline with data older than 24 h: shown at once with the offline banner",
   await page.clock.setFixedTime(new Date(DAY_MS + 40 * H));
   await page.reload();
   await waitReady(page);
-  assert.equal(await banner(page).innerText(), "離線中・顯示 14:20 的資料");
+  assert.equal(await banner(page).innerText(), "離線中・顯示 11/21 14:20 的資料");
   assert.equal(app.blocked.length, 0);
   noErrors(app);
 });

@@ -102,5 +102,7 @@ test("dataBannerText: stale, refreshing and offline texts; the date appears only
   assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-22T14:20"), refreshing: true }), "資料時間 14:20・更新中…", "exactly 24 h: no date yet");
   assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-22T14:21"), refreshing: true }), "資料時間 11/21 14:20・更新中…");
   assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-30T09:00") }), "資料時間 11/21 14:20・無法更新");
-  assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-30T09:00"), offline: true, refreshing: true }), "離線中・顯示 14:20 的資料", "offline wins and has no date");
+  assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-30T09:00"), offline: true, refreshing: true }), "離線中・顯示 11/21 14:20 的資料", "offline wins; the date rule applies beyond 24 h");
+  assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-22T14:20"), offline: true }), "離線中・顯示 14:20 的資料", "exactly 24 h: no date");
+  assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-22T14:21"), offline: true }), "離線中・顯示 11/21 14:20 的資料");
 });

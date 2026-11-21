@@ -282,6 +282,7 @@ export function createController({
     } catch (error) {
       if (myGen !== gen) return;
       if (raw.forecast) store.set({ status: "stale" });
+      else if (!onLine()) store.set({ offline: true, status: "error", vm: null, alert: null, error: OFFLINE_ERROR, fetchedAt: null }); // dropped while in flight
       else store.set({ status: "error", vm: null, alert: null, error });
       return;
     }
@@ -392,7 +393,10 @@ export function createController({
     } catch (error) {
       if (myGen !== rec.gen) return;
       if (rec.raw.forecast) rebuildPlace(key, "stale");
-      else setEntry(key, { status: "error", vm: null, error, fetchedAt: null });
+      else if (!onLine()) {
+        store.set({ offline: true });
+        setEntry(key, { status: "error", vm: null, error: OFFLINE_ERROR, fetchedAt: null }); // dropped while in flight
+      } else setEntry(key, { status: "error", vm: null, error, fetchedAt: null });
       return;
     }
     if (myGen !== rec.gen) return;
@@ -512,21 +516,24 @@ export function createController({
      * Reload when the cached forecast is not fresh (tab became visible): the current place, plus only
      * the extra places the visible view uses (`wanted`), so Today never refreshes the work or trip place.
      * When `active` (the keys of the work and trip places that are currently set) is given, extra
-     * records outside `active` and `wanted` are dropped (cleared places).
+     * records outside `active` and `wanted` are dropped (cleared places). Offline it only sets the flag: data shown as `ready` stays `ready`.
      * @param {{wanted?: string[], active?: string[]}} [opts] Place keys (`placeKey`).
      * @returns {Promise<void>}
      */
     async refreshIfStale({ wanted = [], active = null } = {}) {
       if (!loc) return;
       if (active) for (const k of [...extra.keys()]) if (!active.includes(k) && !wanted.includes(k)) dropPlace(k);
+      // Offline there is nothing to refresh: data that is on screen as `ready` must not become `stale` (it would be announced).
+      const offline = !onLine();
+      if (offline) store.set({ offline: true });
       const stalePlaces = [];
       for (const key of wanted) {
         const rec = extra.get(key);
         const e = store.get().places[key];
-        if (rec && e && !rec.promise && !(e.status === "ready" && cache?.get(key)?.fresh)) stalePlaces.push(key);
+        if (rec && e && !rec.promise && !(e.status === "ready" && (offline || cache?.get(key)?.fresh))) stalePlaces.push(key);
       }
       const others = stalePlaces.map(startPlace);
-      if (cache?.get(forecastKey)?.fresh && store.get().status === "ready") return void (await Promise.all(others));
+      if (store.get().status === "ready" && (offline || cache?.get(forecastKey)?.fresh)) return void (await Promise.all(others));
       await Promise.all([load(loc), ...others]);
     },
 
