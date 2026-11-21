@@ -24,7 +24,7 @@ export function createAnimTracker() {
         booted = false;
         shakeActive = false;
       }
-      if (r === "today" && hasData) booted = true;
+      if (hasData) booted = true;
       let restartShake = false;
       const hadAlert = shakenId !== null;
       if (alertId && alertId !== shakenId && r === "today") {

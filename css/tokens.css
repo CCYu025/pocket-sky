@@ -14,6 +14,9 @@
   --alert: #ff6b9a;
   --on-alert: #000000;
   --rain: #7dd3fc;
+  --lime: #a3e635; /* 運動 scenario accent (active chip, best key) */
+  --on-lime: #000000;
+  --bar-ok: #8a8577; /* neutral exercise bar fill */
 
   --border: 3px solid var(--line);
   --sh: 4px 4px 0 var(--line);

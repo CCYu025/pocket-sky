@@ -67,3 +67,59 @@ for (const [name, t] of [["day", day], ["night", night]]) {
     assert.ok(r >= 3, `${name}: stripe --${stripe[1]} on track --${track} = ${r.toFixed(2)}`);
   });
 }
+
+// ---- M3 outing: chips, best key, checklist, exercise bars -------------------------------------
+/** The `var(--token)` a CSS rule uses for `prop` (exact selector match), or null. */
+function ruleVar(selector, prop) {
+  const esc = selector.replace(/[.>\[\]"=()]/g, "\\$&");
+  const m = new RegExp(`(?:^|\\n)${esc}\\s*\\{([^}]*)\\}`).exec(appCss);
+  const d = m && new RegExp(`(?:^|[;\\s])${prop}:\\s*([^;]+);`).exec(m[1]);
+  const v = d && /var\(--([\w-]+)\)/.exec(d[1]);
+  return v ? v[1] : null;
+}
+
+for (const [name, t] of [["day", day], ["night", night]]) {
+  test(`outing: active chip / best key / tag text >= 4.5:1 on their backgrounds (${name})`, () => {
+    const pairs = [
+      [".chip--commute[aria-current=\"page\"]", "color", "background"],
+      [".chip--exercise[aria-current=\"page\"]", "color", "background"],
+      [".best", "color", "background"],
+      [".tag", "color", "background"],
+      [".is-on .cbox", "color", "background"],
+    ];
+    for (const [sel, fg, bg] of pairs) {
+      const f = ruleVar(sel, fg);
+      const b = ruleVar(sel, bg);
+      assert.ok(f && b, `${sel} declares token colours (${f}, ${b})`);
+      const r = ratio(t[f], t[b]);
+      assert.ok(r >= 4.5, `${name}: ${sel} --${f} on --${b} = ${r.toFixed(2)}`);
+    }
+    // 出遊 (when it becomes active) uses --rain with black text
+    assert.ok(ratio("#000000", t.rain) >= 4.5, `${name}: black on --rain`);
+    // the disabled 出遊 chip keeps readable --sub text on --card
+    assert.ok(ratio(t.sub, t.card) >= 4.5);
+  });
+
+  test(`outing: exercise bars and checklist box read against the card >= 3:1 (${name})`, () => {
+    const border = ruleVar(".xfill", "border"); // `2px solid var(--line)`
+    assert.equal(border, "line");
+    assert.ok(ratio(t.line, t.card) >= 3, `${name}: bar outline --line on --card`);
+    const fills = { ok: ruleVar(".xfill", "background"), good: ruleVar(".xbar--good .xfill", "background"), bad: ruleVar(".xbar--bad .xfill", "background") };
+    assert.deepEqual(fills, { ok: "bar-ok", good: "ink", bad: "alert" });
+    // good (--ink) and neutral (--bar-ok) fills read against the card on their own; the bad (--alert)
+    // fill is carried by the 3 px --line outline (checked above), like every bar.
+    assert.ok(ratio(t.ink, t.card) >= 3, `${name}: good fill`);
+    assert.ok(ratio(t["bar-ok"], t.card) >= 3, `${name}: neutral fill ${ratio(t["bar-ok"], t.card).toFixed(2)}`);
+    // selected ring: --line outer ring against the --card gap and the surrounding card
+    assert.match(appCss, /\.xbar\[aria-pressed="true"\] \.xfill \{ box-shadow: 0 0 0 3px var\(--card\), 0 0 0 6px var\(--line\); \}/);
+    // checklist box outline
+    assert.equal(ruleVar(".cbox", "border"), "line");
+    assert.ok(ratio(t["on-accent"], t.accent) >= 3, `${name}: check mark on accent`);
+  });
+}
+
+test("outing: text and surfaces use only existing tokens plus the three M3 additions", () => {
+  assert.match(css, /--lime:\s*#a3e635/i);
+  assert.match(css, /--on-lime:\s*#000000/i);
+  assert.match(css, /--bar-ok:\s*#8a8577/i);
+});

@@ -3,12 +3,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { todayHtml, metricItems, applyDynamicStyles } from "../../js/ui/views/today.js";
 import { toViewModel } from "../../js/domain/derive.js";
-import { ATTRIBUTION } from "../../js/api/openmeteo.js";
 
 const fx = (f) => JSON.parse(readFileSync(new URL(`../fixtures/${f}`, import.meta.url), "utf8"));
 const NOW = Date.parse("2026-11-20T12:20:00Z"); // 20:20 Taipei
 const vm = () => toViewModel({ forecast: fx("forecast-taichung.json"), air: fx("air-taichung.json"), nowMs: NOW });
-const ui = { attribution: ATTRIBUTION };
 
 test("metricItems derives the five cards from the view model", () => {
   const m = metricItems(vm());
@@ -19,7 +17,7 @@ test("metricItems derives the five cards from the view model", () => {
 });
 
 test("loading state renders -- placeholders and the busy-friendly text", () => {
-  const html = todayHtml({ status: "loading", vm: null, alert: null, notice: null, fetchedAt: null }, ui);
+  const html = todayHtml({ status: "loading", vm: null, alert: null, notice: null, fetchedAt: null });
   assert.match(html, /載入天氣中/);
   assert.match(html, /aria-label="氣溫 無資料"/);
   assert.match(html, /aria-label="時間 無資料"/);
@@ -27,7 +25,7 @@ test("loading state renders -- placeholders and the busy-friendly text", () => {
 });
 
 test("error state shows a retry button and no metrics", () => {
-  const html = todayHtml({ status: "error", vm: null, alert: null, notice: null, fetchedAt: null }, ui);
+  const html = todayHtml({ status: "error", vm: null, alert: null, notice: null, fetchedAt: null });
   assert.match(html, /data-action="retry"/);
   assert.doesNotMatch(html, /class="metric"/);
 });
@@ -36,7 +34,6 @@ test("interpolated strings are escaped", () => {
   const evil = '<img src=x onerror="alert(1)">';
   const html = todayHtml(
     { status: "ready", vm: vm(), alert: { id: "a", kind: "rainJump", title: evil, detail: evil }, notice: evil, fetchedAt: NOW },
-    { attribution: { text: evil, href: 'https://x/"><script>' } },
   );
   assert.doesNotMatch(html, /<img/);
   assert.doesNotMatch(html, /<script/);
@@ -44,12 +41,12 @@ test("interpolated strings are escaped", () => {
 });
 
 test("stale banner shows the local fetch time", () => {
-  const html = todayHtml({ status: "stale", vm: vm(), alert: null, notice: null, fetchedAt: Date.parse("2026-11-21T06:20:00Z") }, ui);
+  const html = todayHtml({ status: "stale", vm: vm(), alert: null, notice: null, fetchedAt: Date.parse("2026-11-21T06:20:00Z") });
   assert.match(html, /資料時間 14:20・無法更新/);
 });
 
 test("no inline style attributes (CSP has no 'unsafe-inline'); numbers travel as data-* attributes", () => {
-  const html = todayHtml({ status: "ready", vm: vm(), alert: null, notice: null, fetchedAt: NOW }, ui);
+  const html = todayHtml({ status: "ready", vm: vm(), alert: null, notice: null, fetchedAt: NOW });
   assert.doesNotMatch(html, /\sstyle=/);
   assert.equal((html.match(/class="bar" data-p="\d+" data-i="\d"/g) || []).length, 8);
   assert.match(html, /<div data-pct="\d+"><\/div>/);
@@ -71,7 +68,7 @@ test("applyDynamicStyles sets --p/--i/--pct through the CSSOM", () => {
 });
 
 test("the 24px clock hides ghost segments, the big temperature keeps them", () => {
-  const html = todayHtml({ status: "ready", vm: vm(), alert: null, notice: null, fetchedAt: NOW }, ui);
+  const html = todayHtml({ status: "ready", vm: vm(), alert: null, notice: null, fetchedAt: NOW });
   assert.match(html, /<span class="clock"><span class="seg7 seg7--noghost"/);
   assert.match(html, /<div class="temp"><span class="seg7" /);
 });
@@ -91,10 +88,15 @@ test("index.html CSP: no 'unsafe-inline' styles; fonts hosts only in style-src/f
 test("daylight bar: night label and class after sunset, day label by day", () => {
   const mk = (minuteKey) => {
     const v = vm();
-    return todayHtml({ status: "ready", vm: { ...v, now: { ...v.now, minuteKey } }, alert: null, notice: null, fetchedAt: NOW }, ui);
+    return todayHtml({ status: "ready", vm: { ...v, now: { ...v.now, minuteKey } }, alert: null, notice: null, fetchedAt: NOW });
   };
   const night = mk(`${vm().today.sunset.slice(0, 11)}23:00`);
   assert.match(night, /class="daybar daybar--night"[^>]*aria-label="夜間已過"/);
   const day = mk(`${vm().today.sunrise.slice(0, 11)}12:00`);
   assert.match(day, /class="daybar"[^>]*aria-label="日照已過"/);
+});
+
+test("N1: the attribution link is not part of the Today template (it is the persistent footer)", () => {
+  const html = todayHtml({ status: "ready", vm: vm(), alert: null, notice: null, fetchedAt: NOW });
+  assert.doesNotMatch(html, /attribution|open-meteo/i);
 });

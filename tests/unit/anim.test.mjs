@@ -48,3 +48,15 @@ test("a continuation alert id does not restart the shake", () => {
   assert.equal(t.next({ route: "today", hasData: true, alertId: "a:2" }).restartShake, false);
   assert.equal(t.next({ route: "today", hasData: true, alertId: "a:9" }).restartShake, true);
 });
+
+test("outing scenarios boot per scenario visit (a chip switch is a new visit) and never shake", () => {
+  const t = createAnimTracker();
+  const o = (route, extra = {}) => ({ route, hasData: true, alertId: null, ...extra });
+  assert.equal(t.next(o("outing/commute", { hasData: false })).boot, false);
+  assert.equal(t.next(o("outing/commute")).boot, true);
+  assert.equal(t.next(o("outing/commute")).boot, true, "stays on while re-rendering");
+  assert.equal(t.next(o("outing/exercise", { hasData: false })).boot, false, "new visit, no data yet");
+  assert.equal(t.next(o("outing/exercise")).boot, true);
+  const r = t.next(o("outing/exercise"));
+  assert.deepEqual([r.shake, r.restartShake], [false, false]);
+});

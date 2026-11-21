@@ -83,17 +83,17 @@ export function indexOfHour(times, hourKey) {
 }
 
 /**
- * Hour keys from the current floored hour through 23:00 today; when the current
- * hour is >= 22 the window extends through 06:00 the next day.
+ * Constant look-ahead window: `lookAheadHours` consecutive hour keys starting at the current
+ * floored hour (the current hour is included), crossing midnight when needed.
  * @param {number} utcOffsetSeconds
  * @param {number} nowMs
- * @returns {string[]} Hour keys in ascending order.
+ * @param {number} [lookAheadHours=12] Number of hour keys.
+ * @returns {string[]} Hour keys in ascending order (14:20 -> 14:00 .. 01:00 tomorrow).
  */
-export function exerciseWindow(utcOffsetSeconds, nowMs) {
-  const { hourKey, hour } = localParts(utcOffsetSeconds, nowMs);
-  const count = hour >= 22 ? 24 - hour + 6 + 1 : 24 - hour;
+export function exerciseWindow(utcOffsetSeconds, nowMs, lookAheadHours = 12) {
+  const { hourKey } = localParts(utcOffsetSeconds, nowMs);
   const keys = [];
-  for (let i = 0; i < count; i++) keys.push(addHours(hourKey, i));
+  for (let i = 0; i < lookAheadHours; i++) keys.push(addHours(hourKey, i));
   return keys;
 }
 
