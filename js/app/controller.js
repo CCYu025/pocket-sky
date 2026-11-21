@@ -198,7 +198,8 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
     dismissAlert() {
       const alert = store.get().alert;
       if (!alert) return;
-      const date = String(alert.id).split(":")[1] ?? "";
+      const vm = store.get().vm;
+      const date = String(vm?.now?.hourKey ?? "").slice(0, 10);
       recordDismissed(storage, readAlertState(storage, date, now()), alert.id);
       store.set({ alert: null });
     },

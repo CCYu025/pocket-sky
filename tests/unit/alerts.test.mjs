@@ -41,7 +41,7 @@ test('rainJump uses first qualifying hour and formats text', () => {
   assert.equal(a.startsAt, '2026-11-21T16:00');
   assert.equal(a.title, '16:00 起可能下雨');
   assert.equal(a.detail, '降雨機率 65%');
-  assert.equal(a.id, 'rainJump:2026-11-21');
+  assert.equal(a.id, 'rainJump:2026-11-21T16:00');
   assert.equal(a.priority, 2);
 });
 
@@ -67,7 +67,7 @@ test('tempDrop reports min hour, rounded numbers', () => {
   assert.equal(a.title, '氣溫將下降 5°');
   assert.equal(a.detail, '17:00 降至 15°');
   assert.equal(a.priority, 1);
-  assert.equal(a.id, 'tempDrop:2026-11-21');
+  assert.equal(a.id, 'tempDrop:2026-11-21T17:00');
 });
 
 test('tempDrop ignores nulls and window limit', () => {
@@ -85,13 +85,13 @@ test('both present sorted by priority; pickAlert', () => {
 
 test('dismissed id suppresses only that alert', () => {
   const vm = makeVm({ rain: { 1: 80 }, temp: { 2: 10 } });
-  const list = ev(vm, { dismissed: { 'rainJump:2026-11-21': true } });
+  const list = ev(vm, { dismissed: { 'rainJump:2026-11-21T15:00': true } });
   assert.deepEqual(list.map((a) => a.kind), ['tempDrop']);
 });
 
 test('cooldown suppresses different-id alert of same kind, allows after 3 h', () => {
   const vm = makeVm({ rain: { 1: 80 } });
-  const other = { rainJump: 'rainJump:2026-11-20' };
+  const other = { rainJump: 'rainJump:2026-11-21T10:00' };
   assert.equal(ev(vm, { lastShown: { rainJump: NOW - 2 * H }, lastShownId: other }).length, 0);
   assert.equal(ev(vm, { lastShown: { rainJump: NOW - 2 * H } }).length, 0);
   assert.equal(ev(vm, { lastShown: { rainJump: NOW - 3 * H }, lastShownId: other }).length, 1);
@@ -108,7 +108,7 @@ test('same id within cooldown is still shown', () => {
   const vm = makeVm({ rain: { 1: 80 } });
   const list = ev(vm, {
     lastShown: { rainJump: NOW - H },
-    lastShownId: { rainJump: 'rainJump:2026-11-21' },
+    lastShownId: { rainJump: 'rainJump:2026-11-21T15:00' },
   });
   assert.equal(list.length, 1);
 });
@@ -116,4 +116,26 @@ test('same id within cooldown is still shown', () => {
 test('hoursAvailable false or null vm gives []', () => {
   assert.deepEqual(ev(makeVm({ hoursAvailable: false })), []);
   assert.deepEqual(ev(null), []);
+});
+
+test('id is per event: kind + startsAt, so a later event of the same kind gets a new id', () => {
+  const [a] = ev(makeVm({ rain: { 1: 80 } }));
+  const [b] = ev(makeVm({ rain: { 3: 80 } }));
+  assert.equal(a.id, 'rainJump:2026-11-21T15:00');
+  assert.equal(b.id, 'rainJump:2026-11-21T17:00');
+  assert.notEqual(a.id, b.id);
+});
+
+test('dismissing one event does not hide a different event of the same kind', () => {
+  const dismissed = { 'rainJump:2026-11-21T15:00': true };
+  assert.equal(ev(makeVm({ rain: { 1: 80 } }), { dismissed }).length, 0);
+  assert.equal(ev(makeVm({ rain: { 3: 80 } }), { dismissed }).length, 1);
+});
+
+test('cooldown applies between different events of a kind; the same event is exempt', () => {
+  const shown = { lastShown: { rainJump: NOW - H }, lastShownId: { rainJump: 'rainJump:2026-11-21T15:00' } };
+  assert.equal(ev(makeVm({ rain: { 1: 80 } }), shown).length, 1, 're-render of the same event');
+  assert.equal(ev(makeVm({ rain: { 3: 80 } }), shown).length, 0, 'new event inside cooldown');
+  const later = { lastShown: { rainJump: NOW - 3 * H }, lastShownId: shown.lastShownId };
+  assert.equal(ev(makeVm({ rain: { 3: 80 } }), later).length, 1, 'new event after cooldown');
 });

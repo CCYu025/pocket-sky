@@ -141,9 +141,12 @@ Tokens live in `css/tokens.css` as CSS custom properties; `[data-theme="night"]`
 - `evaluateAlerts(vm, { dismissed = {}, lastShown = {}, lastShownId = {}, nowMs })` → array of `{ id, kind, startsAt, title, detail, priority, value }` (`value` = rounded rain % or rounded temperature drop), highest priority first. "Next windowHours" = `hours[1..windowHours]`; null values never trigger:
   - `rainJump`: current hour rainProb ≤ fromMax AND some hour within the next `windowHours` has rainProb ≥ toMin → `startsAt` = first such hourKey; title e.g. `15:00 起可能下雨`, detail `降雨機率 70%`.
   - `tempDrop`: `hours[0].temp − min(temp over next windowHours) ≥ minDrop` → title `氣溫將下降 5°`, detail `{HH}:00 降至 18°`.
-  - `id` = `${kind}:${date}` (one per kind per local day). Drop alerts whose id is in `dismissed`. Drop alerts whose `lastShown[kind]` (epoch ms) is within `cooldownHours` of `nowMs` **unless** `lastShownId[kind] === id` (re-renders must keep showing it).
+  - `id` = `${kind}:${startsAt}` (e.g. `rainJump:2026-11-21T16:00`): **one id per event**, not per day. Drop alerts whose id is in `dismissed` (dismissing hides only that event). Drop alerts whose `lastShown[kind]` (epoch ms) is within `cooldownHours` of `nowMs` **unless** `lastShownId[kind] === id`: the 3 h cooldown applies between *different* events of the same kind, while the same event is exempt so re-renders keep showing it.
   - Returns `[]` when `vm.hoursAvailable` is false.
 - `pickAlert(alerts)` → first or `null` (at most one alert shown).
+
+### `ps:alerts` (`js/app/alert-state.js`)
+`{ dismissed: {id: true}, lastShown: {kind: ms}, lastShownId: {kind: id} }`. `readAlertState(storage, date, nowMs)` prunes on read: ids of events that started before the local `date` and ids not in the per-event format `^kind:YYYY-MM-DDTHH:MM$` (the former `kind:date` ids) are ignored and dropped on the next write; `lastShown` entries older than 24 h are dropped. Old-format data therefore never throws and never hides a new event.
 
 ### `js/domain/summary.js` (pure)
 - `headline(vm, alert)` → short zh-Hant sentence, priority: (1) alert → e.g. `15 時起可能下雨，記得帶傘` / `氣溫將下降 5°，加件外套`; (2) any of `hours[1..6]` rainProb ≥ 40 → `{H} 時可能下雨，記得帶傘` (hour not zero-padded); (3) `|round(yesterdayDelta)| ≥ 4` → `比昨天冷 4°，加件外套` / `比昨天熱 4°，注意補水`; (4) `今天{label}，{max}° / {min}°` (numbers omitted when null; missing label → branch 5); (5) data unavailable → `資料暫時無法取得`. Numbers rounded to integers.

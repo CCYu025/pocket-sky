@@ -168,20 +168,20 @@ test("rainy forecast yields an alert; dismiss persists to ps:alerts and survives
   await c.init();
   const alert = c.store.get().alert;
   assert.equal(alert.kind, "rainJump");
-  assert.equal(alert.id, "rainJump:2026-11-21");
+  assert.equal(alert.id, "rainJump:2026-11-21T16:00");
   const stored = JSON.parse(ctx.storage.getItem(ALERTS_KEY));
-  assert.equal(stored.lastShownId.rainJump, "rainJump:2026-11-21");
+  assert.equal(stored.lastShownId.rainJump, "rainJump:2026-11-21T16:00");
   assert.equal(stored.lastShown.rainJump, NOW);
 
   // re-render of the same alert keeps showing it and does not restart the cooldown
   ctx.clock.t = NOW + 5 * 60e3;
   await c.refresh();
-  assert.equal(c.store.get().alert?.id, "rainJump:2026-11-21");
+  assert.equal(c.store.get().alert?.id, "rainJump:2026-11-21T16:00");
   assert.equal(JSON.parse(ctx.storage.getItem(ALERTS_KEY)).lastShown.rainJump, NOW);
 
   c.dismissAlert();
   assert.equal(c.store.get().alert, null);
-  assert.deepEqual(JSON.parse(ctx.storage.getItem(ALERTS_KEY)).dismissed, { "rainJump:2026-11-21": true });
+  assert.deepEqual(JSON.parse(ctx.storage.getItem(ALERTS_KEY)).dismissed, { "rainJump:2026-11-21T16:00": true });
 
   __resetInflight();
   const c2 = await make(ctx);
@@ -189,20 +189,24 @@ test("rainy forecast yields an alert; dismiss persists to ps:alerts and survives
   assert.equal(c2.store.get().alert, null);
 });
 
-test("alert state older than today is pruned", async () => {
+test("alert state: older days and old-format ids are pruned/ignored", async () => {
   const rainy = dayForecast((f) => [10, 40, 70, 65].forEach((v, i) => (f.hourly.precipitation_probability[38 + i] = v)));
   const ctx = setup({ forecast: rainy });
   ctx.storage.setItem(ALERTS_KEY, JSON.stringify({
-    dismissed: { "rainJump:2026-11-20": true, "tempDrop:2026-11-21": true },
+    dismissed: {
+      "rainJump:2026-11-20T16:00": true, // yesterday's event: pruned
+      "rainJump:2026-11-21": true, // old per-day id format: unknown, pruned (does not hide today's event)
+      "tempDrop:2026-11-21T17:00": true, // today's event: kept
+    },
     lastShown: { tempDrop: NOW - 1000 },
-    lastShownId: { rainJump: "rainJump:2026-11-20" },
+    lastShownId: { rainJump: "rainJump:2026-11-21", tempDrop: "tempDrop:2026-11-21T17:00" },
   }));
   const c = await make(ctx);
   await c.init();
-  assert.equal(c.store.get().alert.id, "rainJump:2026-11-21");
+  assert.equal(c.store.get().alert.id, "rainJump:2026-11-21T16:00");
   const stored = JSON.parse(ctx.storage.getItem(ALERTS_KEY));
-  assert.deepEqual(stored.dismissed, { "tempDrop:2026-11-21": true });
-  assert.equal(stored.lastShownId.rainJump, "rainJump:2026-11-21");
+  assert.deepEqual(stored.dismissed, { "tempDrop:2026-11-21T17:00": true });
+  assert.equal(stored.lastShownId.rainJump, "rainJump:2026-11-21T16:00");
 });
 
 test("tick advances the clock without network; refreshIfStale skips a fresh cache", async () => {
@@ -219,3 +223,4 @@ test("tick advances the clock without network; refreshIfStale skips a fresh cach
   await c.refreshIfStale();
   assert.ok(ctx.calls.length > n);
 });
+
