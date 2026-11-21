@@ -192,21 +192,22 @@ export const CHECKLIST_RULES = [
 ];
 export const EXERCISE_SCORING = { factors: { temp: [[5,20],[12,70],[18,100],[24,100],[30,40],[35,0]], feelsDelta?: …, humidity: [[30,100],[60,100],[85,40],[100,20]], rainProb: [[0,100],[20,90],[50,30],[80,0]], wind: [[0,100],[20,90],[35,40],[50,0]], aqi: [[0,100],[50,100],[100,50],[150,0]], uv: [[0,100],[5,100],[8,50],[11,20]] }, weights: { temp: 3, humidity: 1, rainProb: 3, wind: 1, aqi: 2, uv: 1 }, levels: { good: 75, ok: 50 } };
 ```
-- Default `agg` is `max`/"any hour matches". `why` is a template producing zh-Hant text with the triggering value (e.g. `18:00 降雨機率 60%（≥ 40% 建議）`). Thresholds live only here.
+- Default `agg` is "any entry matches" (hit = the strongest entry, earliest on ties). `agg: 'range'` = max − min, `'min'`/`'max'` over the entries; `hours: [10, 15]` restricts a condition to entries with `hour` in that inclusive range. `feelsDelta` is **not** implemented (exactly six scoring factors). Thresholds live only here (`T`, `EXERCISE_ADVICE`).
+- **`why` representation**: a function `(ctx) => string` (zh-Hant), not a string template. `ctx = { on, hit, max(f), min(f), range(f) }`, `hit = { field, agg, value, hour } | null`; the function formats the on case (`18:00 降雨機率 60%（≥ 40% 建議）`, hour as `HH:00`, values rounded to integers, rain in mm to 1 dp) and the off case (`降雨機率低（最高 25%）`). `NO_DATA_TEXT = '資料不足'` is applied by the evaluator.
 - Piecewise-linear curves: points `[x, score]`, clamped at both ends. A factor whose value is `null` is skipped and the weights renormalised; if all factors are null the score is `null`.
 
 ### `js/rules/checklist.js` (pure)
-- `evaluateChecklist(hours, rules = CHECKLIST_RULES)` → `[{ id, label, on, why }]` in rule order; `why` explains the trigger when `on`, or the reassuring reason when off (e.g. `通勤時段紫外線低`, `空氣品質良好 AQI 42`, `資料不足` when every relevant value is null).
-- `legHours(vmHours, hour, span = 2)` → the entries of `vm.hours` whose `hour` ∈ `[hour, hour+span)` on the next occurrence of that hour (today if not yet passed — current hour counts — else tomorrow); `[]` if outside the 24 h horizon.
+- `evaluateChecklist(hours, rules = CHECKLIST_RULES)` → `[{ id, label, on, why, hourKey }]` in rule order; `why` explains the trigger when `on`, or the reassuring reason when off (e.g. `通勤時段紫外線低`, `空氣品質良好 AQI 42`). `hourKey` is the triggering entry's hour (`null` when off or for `range`) so views can show which leg triggered. Null values are skipped; a rule is `on: false` with `資料不足` when `hours` is empty or all its values are null. A condition whose `hours` window contains none of the entries is simply not triggered (not "no data"), so sunscreen over an 08:00/18:00 commute is off with `通勤時段紫外線低`.
+- `legHours(vmHours, hour, span = 2)` → up to `span` consecutive `vm.hours` entries starting at the next occurrence of `hour`: today's if `hour >= vmHours[0].hour` (the current hour counts), else tomorrow's; `[]` if absent from `vm.hours`. Entries that do not exist are not invented (hour 23 at the end of the horizon returns 1 entry); a span may cross midnight.
 
 ### `js/rules/exercise.js` (pure)
-- `scoreHour(h, cfg = EXERCISE_SCORING)` → integer 0–100 or `null`.
-- `exerciseSlots(vm, nowMs)` → for each hourKey in `exerciseWindow(utcOffsetSeconds, nowMs)` that exists in `vm.hours`: `{ hourKey, hour, score, level: 'good'|'ok'|'bad'|null, isTomorrow, metrics: { temp, feels, humidity, rainProb, wind, uv, aqi } }`.
+- `scoreHour(h, cfg = EXERCISE_SCORING)` → integer 0–100 or `null`. A perfect hour scores 100; the worst possible hour scores 4, not 0, because the humidity and UV curves floor at 20.
+- `exerciseSlots(vm, nowMs)` → for each hourKey in `exerciseWindow(utcOffsetSeconds, nowMs)` that exists in `vm.hours` (missing hours are omitted): `level` is `good` for score ≥ `levels.good`, `ok` for ≥ `levels.ok`, else `bad`, `null` for a null score; `isTomorrow` = the slot's date differs from `vm.now.hourKey`'s date: `{ hourKey, hour, score, level: 'good'|'ok'|'bad'|null, isTomorrow, metrics: { temp, feels, humidity, rainProb, wind, uv, aqi } }`.
 - `bestSlot(slots)` → highest score (earliest on ties) or `null`.
 - `exerciseAdvice(slot)` → one short zh-Hant line: rain ≥ 50 → `降雨機率 X%，建議改室內`; feels ≥ 30 → `偏熱，多補水`; aqi ≥ 100 → `空氣品質差，建議室內`; level good → `涼爽少雨，適合慢跑或騎車`; else `留意天氣變化`.
 
 ### `js/domain/outing-summary.js` (pure)
-- `commuteHeadline(outItems, backItems, outHours, backHours)` → e.g. `傍晚回家會遇到雨` / `早上出門可能下雨` / `來回都舒適`, `資料不足` when both legs empty.
+- `commuteHeadline(outItems, backItems, outHours, backHours)`: items are the checklist evaluated **per leg**, hours the `legHours` results. Priority: both hour lists empty → `資料不足`; umbrella on both legs → `來回都可能下雨`; back only → `{傍晚}回家會遇到雨`; out only → `{早上}出門可能下雨` (period word from the leg's first hour: 凌晨 <6, 早上 <12, 下午 <18, 傍晚 <20, else 晚上); mask → `空氣品質差，記得戴口罩`; jacket → `氣溫偏低，記得帶外套`; else `來回都舒適`.
 
 ### Views
 - Commute (`js/ui/views/commute.js`): hero LCD with two legs (OUT / BACK, seg7 HH:00, condition, temp, `雨 X%・風 Y km/h`, a blinking `!RAIN` only on a leg whose rainProb ≥ 40 — this is the screen's one infinite animation), hour selectors for 出門 / 回家 (native `<select>` 00–23 with visible labels, ≥ 44 px), headline, checklist (combined over both legs; each item shows which leg triggered it), staggered one-shot pop-in of checklist items.
