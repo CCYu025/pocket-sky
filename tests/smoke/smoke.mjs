@@ -24,6 +24,8 @@ try {
     permissions: ["geolocation"],
     serviceWorkers: "allow",
   });
+  ctx.setDefaultTimeout(20000); // every wait fails fast and is reported as FAIL instead of hanging the run
+  ctx.setDefaultNavigationTimeout(30000);
   const page = await ctx.newPage();
   if (process.env.SMOKE_FIXTURES === "1") {
     await page.clock.setFixedTime(new Date(DAY_UTC));
@@ -50,8 +52,9 @@ try {
 
   const sw = await page
     .evaluate(async () => {
-      const reg = await navigator.serviceWorker.ready;
-      return reg.scope;
+      // `ready` never settles when registration failed or was blocked: race it against a timer
+      const timeout = new Promise((resolve) => setTimeout(() => resolve("serviceWorker.ready did not settle within 15 s"), 15000));
+      return Promise.race([navigator.serviceWorker.ready.then((reg) => reg.scope), timeout]);
     })
     .catch((e) => String(e));
   check("service worker registers", sw.startsWith(base), sw);

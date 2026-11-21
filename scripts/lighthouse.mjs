@@ -1,25 +1,58 @@
 /**
  * Lighthouse quality gate (mobile preset) against the assembled `_site/` served locally.
- * Usage: `npm run lighthouse [-- --runs=3] [--api=auto|real|fixtures] [--out=m5]`
- * Writes `docs/reports/lighthouse-<out>.json` (scores + key metrics) and `.md`. Not part of CI (slow).
+ * Usage: `npm run lighthouse [-- --runs=3] [--api=auto|real|fixtures] [--out=m5] [--no-write]`
+ * Writes `docs/reports/lighthouse-<out>.json` (scores + key metrics) and `.md` unless `--no-write` (the report is
+ * then only printed, so a reviewer can run it without touching the tree). Exit code 1 when any category is below
+ * its target or the app is not installable, else 0. Not part of CI (slow).
+ *
+ * Lighthouse is not a project dependency: on first use it is installed (`npm install --no-save`, pinned version,
+ * together with its own chrome-launcher and puppeteer-core) into `$LIGHTHOUSE_PREFIX` (default
+ * `<os tmpdir>/pocket-sky-lighthouse-<version>`) and reused afterwards. Needs network access to the npm registry once.
  *
  * Open-Meteo: `--api=real` uses the live API; `fixtures` answers the three hosts from tests/fixtures;
  * `auto` (default) probes the forecast API and falls back to fixtures when it answers an error
  * (e.g. the daily limit of a shared sandbox IP), reporting which mode was used.
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { createRequire } from "node:module";
-import lighthouse from "lighthouse";
-import * as chromeLauncher from "chrome-launcher";
-import puppeteer from "puppeteer-core";
+import { pathToFileURL } from "node:url";
 import { startServer } from "../tests/e2e/server.mjs";
 import { dayForecast, airFixture, ROOT } from "../tests/e2e/helpers.mjs";
 import { buildSite } from "./build-site.mjs";
 
-const require = createRequire(import.meta.url);
+const LH_VERSION = "13.6.0";
+const PREFIX = process.env.LIGHTHOUSE_PREFIX || path.join(tmpdir(), `pocket-sky-lighthouse-${LH_VERSION}`);
+
+/**
+ * Import a package installed under PREFIX (these are ES modules without a resolvable `exports` map from here).
+ * @param {string} name Package name.
+ * @returns {Promise<object>} The module namespace.
+ */
+async function importInstalled(name) {
+  const dir = path.join(PREFIX, "node_modules", name);
+  const pkg = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8"));
+  const dot = pkg.exports?.["."];
+  const entry = (typeof dot === "string" ? dot : dot?.import) ?? pkg.main;
+  return import(pathToFileURL(path.join(dir, entry)).href);
+}
+
+/** Install the pinned Lighthouse into PREFIX once. */
+function ensureInstalled() {
+  if (existsSync(path.join(PREFIX, "node_modules/lighthouse/package.json"))) return;
+  console.log(`installing lighthouse@${LH_VERSION} into ${PREFIX} (one time)`);
+  mkdirSync(PREFIX, { recursive: true });
+  execFileSync("npm", ["install", "--prefix", PREFIX, "--no-save", "--no-audit", "--no-fund", "--loglevel=error", `lighthouse@${LH_VERSION}`], { stdio: "inherit" });
+}
+ensureInstalled();
+const lighthouse = (await importInstalled("lighthouse")).default;
+const chromeLauncher = await importInstalled("chrome-launcher");
+const puppeteer = (await importInstalled("puppeteer-core")).default;
+
 const arg = (n, d) => process.argv.find((a) => a.startsWith(`--${n}=`))?.split("=")[1] ?? d;
 const RUNS = Number(arg("runs", 3));
+const WRITE = !process.argv.includes("--no-write");
 const OUT = arg("out", "m5");
 const API = arg("api", "auto");
 const TARGETS = { performance: 90, accessibility: 95, "best-practices": 95, seo: 90 };
@@ -106,7 +139,7 @@ const siteDir = path.join(ROOT, "_site");
 buildSite(siteDir);
 const server = await startServer({ root: siteDir });
 const chrome = findChrome();
-console.log(`Lighthouse ${require("lighthouse/package.json").version}, chrome ${chrome}, api=${api}, runs=${RUNS}`);
+console.log(`Lighthouse ${LH_VERSION}, chrome ${chrome}, api=${api}, runs=${RUNS}`);
 const lhrs = [];
 try {
   for (let i = 0; i < RUNS; i++) {
@@ -131,7 +164,7 @@ const failing = Object.values(medianLhr.audits)
 const installErrors = medianLhr.__installErrors;
 const report = {
   generatedAt: new Date().toISOString(),
-  lighthouse: require("lighthouse/package.json").version,
+  lighthouse: LH_VERSION,
   formFactor: "mobile (default preset: simulated slow 4G, 4x CPU)",
   target: "_site/ served by tests/e2e/server.mjs on 127.0.0.1",
   api,
@@ -144,8 +177,10 @@ const report = {
   installability: { chromeInstallabilityErrors: installErrors, installable: installErrors.length === 0 },
 };
 const dir = path.join(ROOT, "docs/reports");
-mkdirSync(dir, { recursive: true });
-writeFileSync(path.join(dir, `lighthouse-${OUT}.json`), JSON.stringify(report, null, 2) + "\n");
+if (WRITE) {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, `lighthouse-${OUT}.json`), JSON.stringify(report, null, 2) + "\n");
+}
 
 const md = [
   `# Lighthouse report (${OUT})`,
@@ -168,6 +203,12 @@ const md = [
   "",
   ...notes(dir),
 ].join("\n");
-writeFileSync(path.join(dir, `lighthouse-${OUT}.md`), md);
+if (WRITE) writeFileSync(path.join(dir, `lighthouse-${OUT}.md`), md);
 console.log(md);
+const below = Object.keys(TARGETS).filter((k) => scores[k] < TARGETS[k]);
+if (below.length || !report.installability.installable) {
+  console.error(`FAIL: ${below.length ? `below target: ${below.map((k) => `${k} ${scores[k]} < ${TARGETS[k]}`).join(", ")}` : ""}${below.length && !report.installability.installable ? "; " : ""}${report.installability.installable ? "" : `not installable: ${installErrors.join(", ")}`}`);
+  process.exit(1);
+}
+console.log(WRITE ? "OK (reports written)" : "OK (--no-write: nothing written)");
 process.exit(0);
