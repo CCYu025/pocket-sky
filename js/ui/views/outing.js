@@ -26,7 +26,7 @@ export function chipsHtml(scenario) {
 /**
  * Full Outing HTML for a controller state.
  * @param {object} state Controller state (see js/app/controller.js).
- * @param {{outing: {scenario: string, commute: {out: number, back: number}}, nowMs: number, picked: (string|null), flip: number}} ui
+ * @param {{outing: {scenario: string, commute: {out: number, back: number}}, nowMs: number, picked: (string|null), flip: number, exercise?: object}} ui
  *   `ui.outing.scenario` is the *resolved* scenario of the route.
  * @returns {string} HTML.
  */

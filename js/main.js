@@ -54,18 +54,17 @@ const live = doc.getElementById("live");
 const announcer = createAnnouncer();
 const anim = createAnimTracker();
 const outingAnnouncer = createOutingAnnouncer();
-const outingSay = createDebouncedAnnouncer({ write: (m) => void (live.textContent = m), delay: 500 });
+/** True while the hash is an Outing route (the debounced announcer must never speak elsewhere). */
+const onOuting = () => parseRoute(location.hash, "commute").name === "outing";
+const outingSay = createDebouncedAnnouncer({
+  write: (m) => {
+    if (onOuting()) live.textContent = m;
+  },
+  delay: 500,
+});
 
 /** Transient Outing UI state (not persisted): picked exercise hour, flip counter, current visit. */
 const outingUi = { picked: null, flip: 0, visit: null };
-
-/**
- * Current route from the hash (`today` by default; `#outing` opens the last used scenario).
- * @returns {{name: 'today'|'outing', scenario: (string|null), key: string}}
- */
-function currentRoute() {
-  return parseRoute(location.hash, readOuting(storage).scenario);
-}
 
 /**
  * Apply the effective theme to <html> and the theme-color meta.
@@ -105,7 +104,8 @@ function renderLocation(state) {
 /** Re-render chrome and the active view. */
 function render() {
   const state = controller.store.get();
-  const route = currentRoute();
+  const stored = readOuting(storage); // ps:outing is read once per render
+  const route = parseRoute(location.hash, stored.scenario); // `#outing` opens the last used scenario
   applyTheme(state);
 
   renderLocation(state);
@@ -116,7 +116,7 @@ function render() {
 
   let outing = null;
   if (route.name === "outing") {
-    outing = readOuting(storage);
+    outing = stored;
     if (outing.scenario !== route.scenario) {
       outing = { ...outing, scenario: route.scenario };
       writeOuting(storage, outing); // `#outing/exercise` becomes the scenario `#outing` reopens
@@ -133,7 +133,10 @@ function render() {
     continuation: Boolean(state.alert?.continuation),
   });
 
-  if (outing) renderOuting(root, state, { outing, nowMs: now(), picked: outingUi.picked, flip: outingUi.flip });
+  // the exercise model is computed once per render and shared by the view and the announcer
+  const exercise = outing?.scenario === "exercise" && hasData ? exerciseModel(state.vm, now(), outingUi.picked) : null;
+
+  if (outing) renderOuting(root, state, { outing, nowMs: now(), picked: outingUi.picked, flip: outingUi.flip, exercise });
   else renderToday(root, state, { attribution: ATTRIBUTION });
 
   // One-shot animations: `boot` once per route visit, shake when a new alert id appears.
@@ -151,11 +154,8 @@ function render() {
   if (message) live.textContent = message;
 
   // Outing: scenario change and the user-picked exercise hour, debounced 500 ms.
-  let selection = null;
-  if (outing?.scenario === "exercise" && hasData) {
-    const m = exerciseModel(state.vm, now(), outingUi.picked);
-    if (m.slot) selection = { key: m.slot.hourKey, text: slotLabel(m.slot), picked: m.picked };
-  }
+  const selection = exercise?.slot ? { key: exercise.slot.hourKey, text: slotLabel(exercise.slot), picked: exercise.picked } : null;
+  if (!outing) outingSay.cancel(); // left Outing inside the quiet period: drop the pending message
   outingSay.say(outingAnnouncer.next({ scenario: outing ? outing.scenario : null, selection }));
 }
 

@@ -312,6 +312,18 @@ test("exerciseHtml: bars are buttons with accessible names and aria-pressed; esc
   assert.match(exerciseHtml(ready(vm), ui({ flip: 2 })), /class="x-score flip-b"/);
 });
 
+test("n10: exerciseHtml renders the model it is given (computed once per render), not a fresh one", () => {
+  const vm = vmAt(NOW);
+  const model = exerciseModel(vm, NOW, null);
+  const marked = { ...model, verdict: "SENTINEL-VERDICT", advice: "SENTINEL-ADVICE" };
+  const html = exerciseHtml(ready(vm), ui({ exercise: marked }));
+  assert.match(html, /SENTINEL-VERDICT/);
+  assert.match(html, /SENTINEL-ADVICE/);
+  assert.doesNotMatch(exerciseHtml(ready(vm), ui()), /SENTINEL/, "without ui.exercise it computes its own");
+  assert.match(exerciseHtml({ status: "loading", vm: null }, ui({ exercise: marked })), /時間 無資料/, "never rendered while loading");
+  assert.doesNotMatch(exerciseHtml({ status: "loading", vm: null }, ui({ exercise: marked })), /SENTINEL/);
+});
+
 test("exerciseHtml: tomorrow markers; loading, empty and error skeletons", () => {
   const late = exerciseHtml(ready(vmAt(LATE)), ui({ nowMs: LATE }));
   assert.equal((late.match(/<i>明日<\/i>/g) || []).length, 10);

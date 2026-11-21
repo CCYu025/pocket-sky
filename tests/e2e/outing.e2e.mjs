@@ -538,6 +538,47 @@ test("live region: scenario change and the picked hour are announced, debounced 
   noErrors(app);
 });
 
+test("live region: leaving Outing within the debounce never announces the scenario on Today", async () => {
+  const app = await open({ forecast: dayForecast() });
+  const { page } = app;
+  await visit(app, "#outing/commute");
+  await page.waitForTimeout(700);
+  await page.evaluate(() => {
+    window.__writes = [];
+    new MutationObserver(() => window.__writes.push(document.getElementById("live").textContent)).observe(document.getElementById("live"), { childList: true, characterData: true, subtree: true });
+  });
+  await page.locator(".chip--exercise").click();
+  await page.locator("#nav-today").click(); // well inside the 500 ms quiet period
+  assert.equal(await page.evaluate(() => location.hash), "#today");
+  await page.waitForTimeout(900);
+  assert.equal(await live(page), "", "nothing was announced");
+  assert.deepEqual(await page.evaluate(() => window.__writes.filter((w) => w.startsWith("外出"))), [], "外出：運動 was never written");
+  // coming back still announces the scenario once
+  await page.locator("#nav-outing").click();
+  await page.waitForFunction(() => document.getElementById("live").textContent === "外出：運動");
+  noErrors(app);
+});
+
+test("render reads ps:outing once per render (n10)", async () => {
+  const app = await open({ forecast: dayForecast() });
+  const { page } = app;
+  await app.ctx.addInitScript(() => {
+    window.__outingReads = 0;
+    const get = Storage.prototype.getItem;
+    Storage.prototype.getItem = function (k) {
+      if (k === "ps:outing") window.__outingReads += 1;
+      return get.call(this, k);
+    };
+  });
+  await visit(app, "#outing/exercise");
+  await page.waitForTimeout(100);
+  const before = await page.evaluate(() => window.__outingReads);
+  await page.locator(".xbar").nth(1).click(); // one pickSlot -> exactly one render
+  const reads = (await page.evaluate(() => window.__outingReads)) - before;
+  assert.equal(reads, 1, "one read of ps:outing for the whole render");
+  noErrors(app);
+});
+
 // ---------------------------------------------------------------- states
 
 test("loading, stale and error states", async () => {

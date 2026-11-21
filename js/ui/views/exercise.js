@@ -147,13 +147,14 @@ function pickerHtml(model, loadingText) {
 /**
  * Exercise blocks (everything below the scenario chips).
  * @param {{status: string, vm: (object|null)}} state Controller state.
- * @param {{outing: object, nowMs: number, picked: (string|null), flip: number}} ui
+ * @param {{outing: object, nowMs: number, picked: (string|null), flip: number, exercise?: object}} ui
+ *   `ui.exercise`: the `exerciseModel` the caller already computed for this render (reused, not recomputed).
  * @returns {string} HTML.
  */
 export function exerciseHtml(state, ui) {
   const { status, vm } = state;
   const ready = vm && status !== "loading" && status !== "error";
-  const model = ready ? exerciseModel(vm, ui.nowMs, ui.picked) : null;
+  const model = ready ? ui.exercise ?? exerciseModel(vm, ui.nowMs, ui.picked) : null;
   const metrics = (model ? model.metrics : ["溫度 / 體感", "濕度", "降雨機率", "風速", "紫外線", "空氣品質"].map((k) => ({ k, v: "--" })))
     .map((m) => `<div class="metric"><span class="k">${esc(m.k)}</span><span class="v">${esc(m.v)}</span></div>`)
     .join("");
