@@ -101,3 +101,11 @@ test("N3: a 舒適 headline never appears while any combined item is on (no rain
     }
   }
 });
+
+test("jacket via temperature range: 兩地溫差大 for two places, 早晚溫差大 otherwise", () => {
+  const range = ["umbrella", "jacket", "sunscreen", "mask"].map((id) => ({ id, on: id === "jacket", field: id === "jacket" ? "temp" : null }));
+  assert.equal(commuteHeadline(items(), items(), leg(8), leg(18), { combined: range }), "早晚溫差大，記得帶外套");
+  assert.equal(commuteHeadline(items(), items(), leg(8), leg(18), { combined: range, twoPlaces: true }), "兩地溫差大，記得帶外套");
+  const cold = range.map((i) => (i.id === "jacket" ? { ...i, field: "feels" } : i));
+  assert.equal(commuteHeadline(items(), items(), leg(8), leg(18), { combined: cold, twoPlaces: true }), "氣溫偏低，記得帶外套");
+});

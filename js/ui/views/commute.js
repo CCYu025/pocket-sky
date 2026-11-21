@@ -51,8 +51,8 @@ const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
  * Build the commute view model.
  * @param {object} vm Controller view model (`vm.hours` starts at the current hour).
  * @param {{out: number, back: number}} commute Selected leg start hours.
- * @param {{place: object, entry: (object|null)}|null} [work] The work place and its controller entry
- *   (`state.places[key]`). When set, the BACK leg is evaluated on the work place's hours (`BACK・{name}`);
+ * @param {{place: object, entry: (object|null), differs?: boolean}|null} [work] The work place and its controller entry
+ *   (`state.places[key]`; `differs: false` when the current place is the work place itself). When set, the BACK leg is evaluated on the work place's hours (`BACK・{name}`);
  *   while that entry has no data the leg is empty (`workState` `loading` / `error`) and the OUT leg is
  *   unaffected. Without it both legs use `vm`.
  * @returns {{legs: object[], ordered: object[], items: object[], headline: string, workState: (null|'ready'|'loading'|'error')}}
@@ -95,8 +95,9 @@ export function commuteModel(vm, commute, work = null) {
       aria: `${tomorrow ? "明日 " : ""}${l.name} ${time}${isWork ? `，公司 ${work.place.name}` : ""}`,
     };
   });
-  const perLeg = legs.map((l) => evaluateChecklist(l.hours, undefined, { today }));
-  const combined = evaluateChecklist([...legs[0].hours, ...legs[1].hours], undefined, { today });
+  const opts = { today, period: "通勤時段" };
+  const perLeg = legs.map((l) => evaluateChecklist(l.hours, undefined, opts));
+  const combined = evaluateChecklist([...legs[0].hours, ...legs[1].hours], undefined, opts);
   const items = combined.map((it, i) => {
     const tags = legs.flatMap((l, j) => (perLeg[j][i].on ? [`${l.tomorrow ? "明日 " : ""}${l.name} ${l.time}・${valueText(perLeg[j][i])}`] : []));
     if (it.on && tags.length === 0) tags.push("來回");
@@ -105,6 +106,7 @@ export function commuteModel(vm, commute, work = null) {
   const headline = workState === "loading" ? "公司天氣載入中…" : workState === "error" ? "公司天氣暫時無法取得" : commuteHeadline(perLeg[0], perLeg[1], legs[0].hours, legs[1].hours, {
     combined,
     tomorrow: { out: legs[0].tomorrow, back: legs[1].tomorrow },
+    twoPlaces: Boolean(work) && work.differs !== false,
   });
   const [a, b] = legs;
   const ordered = a.entry && b.entry && String(b.entry.hourKey) < String(a.entry.hourKey) ? [b, a] : [a, b];
@@ -165,7 +167,7 @@ export function checklistHtml(items, key = "c-checklist") {
 export function commuteHtml(state, ui) {
   const { status, vm } = state;
   const c = ui.outing.commute;
-  const work = ui.work ? { place: ui.work, entry: entryOf(state, ui.work) } : null;
+  const work = ui.work ? { place: ui.work, entry: entryOf(state, ui.work), differs: ui.work.id !== state.current } : null;
   const model = vm && status !== "loading" && status !== "error" ? commuteModel(vm, c, work) : null;
   let title = "載入天氣中…";
   if (model) title = model.headline;

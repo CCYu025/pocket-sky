@@ -166,3 +166,11 @@ test("legHours: out of horizon, empty input, span", () => {
 test("legHours: crosses midnight with consecutive entries", () => {
   assert.deepEqual(legHours(vmHours(14), 23, 2).map((h) => h.hourKey), [key(23), key(0, "2026-11-22")]);
 });
+
+test("period option names the evaluated period in the sunscreen reasons (default 通勤時段)", () => {
+  const evening = [H(18), H(19)];
+  const sun = (hs, o) => evaluateChecklist(hs, undefined, o).find((i) => i.id === "sunscreen").why;
+  assert.equal(sun(evening), "通勤時段不在 10–15 時");
+  assert.equal(sun(evening, { period: "出遊時段" }), "出遊時段不在 10–15 時");
+  assert.equal(sun([H(11), H(12)], { period: "出遊時段" }), "出遊時段紫外線低");
+});

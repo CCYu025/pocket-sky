@@ -464,3 +464,36 @@ test("css: .xbars pads >= 12px on top and both sides so the selection / focus ri
   assert.ok(m, ".xbars declares a three-value padding");
   assert.ok(Number(m[1]) >= 12 && Number(m[2]) >= 12, `top ${m[1]}px, sides ${m[2]}px`);
 });
+
+test("jacket from a temperature range across two different places says 兩地溫差大 (not 早晚溫差大); same place keeps 早晚", () => {
+  // OUT at the current place 19 degrees, BACK at the work place 26 degrees: the 7 degree range is between places
+  const cur = vmOfHours(synth("2026-11-21", 6, 30, () => ({ temp: 19, feels: 19 })));
+  const work = vmOfHours(synth("2026-11-21", 6, 30, () => ({ temp: 26, feels: 26 })));
+  const m = commuteModel(cur, COMMUTE, { place: WORK_PLACE, entry: workEntry(work) });
+  assert.equal(m.items.find((i) => i.id === "jacket").on, true);
+  assert.equal(m.headline, "兩地溫差大，記得帶外套");
+  // the work place is the current place itself: one place, the plain wording
+  const same = commuteModel(cur, COMMUTE, { place: WORK_PLACE, entry: workEntry(work), differs: false });
+  assert.equal(same.headline, "早晚溫差大，記得帶外套");
+  // no work place: the plain wording
+  const hours = synth("2026-11-21", 10, 24, (h, k) => (tomorrowKey(k) ? { temp: 19, feels: 19 } : { temp: 26, feels: 26 }));
+  assert.equal(commuteModel(vmOfHours(hours), COMMUTE).headline, "早晚溫差大，記得帶外套");
+  // cold feels is not a between-places statement
+  const cold = commuteModel(vmOfHours(synth("2026-11-21", 6, 30, () => ({ temp: 14, feels: 14 }))), COMMUTE, { place: WORK_PLACE, entry: workEntry(vmOfHours(synth("2026-11-21", 6, 30, () => ({ temp: 14, feels: 14 })))) });
+  assert.equal(cold.headline, "氣溫偏低，記得帶外套");
+});
+
+test("commuteHtml: a work place that is not the current place gets the 兩地 wording; the work place being current does not", () => {
+  const cur = vmOfHours(synth("2026-11-21", 6, 30, () => ({ temp: 19, feels: 19 })));
+  const work = vmOfHours(synth("2026-11-21", 6, 30, () => ({ temp: 26, feels: 26 })));
+  const key = "om:v1:forecast:24.80,120.97";
+  const state = { status: "ready", vm: cur, current: "gps", places: { [key]: workEntry(work) } };
+  assert.match(commuteHtml(state, ui({ work: WORK_PLACE })), /兩地溫差大，記得帶外套/);
+  assert.match(commuteHtml({ ...state, current: WORK_PLACE.id }, ui({ work: WORK_PLACE })), /早晚溫差大，記得帶外套/);
+});
+
+test("commute checklist reasons say 通勤時段", () => {
+  const m = commuteModel(vmOfHours(synth("2026-11-21", 6, 30)), COMMUTE);
+  assert.equal(m.items.find((i) => i.id === "sunscreen").why, "通勤時段不在 10–15 時");
+  assert.doesNotMatch(JSON.stringify(m.items), /出遊/);
+});

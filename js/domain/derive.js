@@ -89,7 +89,7 @@ const STALE_CURRENT_MINUTES = 90;
  * @param {number} [args.hoursAhead=24] Length of `hours` (entries from the current hour; capped by the data).
  * @returns {{
  *   location: {lat: number|null, lon: number|null, elevation: number|null, utcOffsetSeconds: number},
- *   now: Object, today: Object, yesterdayDelta: number|null,
+ *   now: Object, today: Object, tomorrow: {sunrise: string|null, sunset: string|null}, yesterdayDelta: number|null,
  *   stale: {current: boolean, ageMinutes: number|null}, hoursAvailable: boolean,
  *   hours: Object[], minutely15: Object[], air: {aqi: number|null, pm25: number|null}|null
  * }} View model; see docs/ARCHITECTURE.md.
@@ -157,6 +157,13 @@ export function toViewModel({ forecast, air = null, nowMs, hoursAhead = 24 }) {
     uvMax: at(daily, 'uv_index_max', di),
   };
 
+  // Tomorrow's sunrise/sunset (the forecast requests 2 days ahead): the trip's best window needs daylight of tomorrow's slots.
+  const ti = indexIn(daily, addHours(`${parts.date}T00:00`, 24).slice(0, 10));
+  const tomorrow = {
+    sunrise: ti >= 0 && Array.isArray(daily.sunrise) ? str(daily.sunrise[ti]) : null,
+    sunset: ti >= 0 && Array.isArray(daily.sunset) ? str(daily.sunset[ti]) : null,
+  };
+
   // Air hourly is not aligned with forecast hourly: join by hourKey.
   const airHourly = air && air.hourly ? air.hourly : null;
   const airIdx = timeIndex(airHourly);
@@ -209,6 +216,7 @@ export function toViewModel({ forecast, air = null, nowMs, hoursAhead = 24 }) {
     },
     now,
     today,
+    tomorrow,
     yesterdayDelta: computeYesterdayDelta(hourly, hourKey),
     stale: { current: staleCurrent, ageMinutes },
     hoursAvailable: hours.length > 0,

@@ -6,7 +6,8 @@
  * where `hit` is `{ field, agg, value, hour, tomorrow? } | null` (the first matching
  * condition; `hour` is the entry's local hour 0-23 or `null` for `range`; `tomorrow` is set
  * when the evaluator was given today's date and the hour lies on another date),
- * `hours` is the list of entries evaluated and `max/min/range(field)` give the aggregate
+ * `hours` is the list of entries evaluated, `period` is the wording of the evaluated period
+ * (`通勤時段` for commute, `出遊時段` for a trip) and `max/min/range(field)` give the aggregate
  * over all supplied hours (or `null`).
  * @module rules/config
  */
@@ -14,6 +15,7 @@
 /** Numeric thresholds shared by the rules and their explanations. */
 export const T = {
   rainProb: 40,
+  rainProbBad: 60,
   rain: 0.5,
   feels: 18,
   range: 6,
@@ -73,7 +75,7 @@ export const CHECKLIST_RULES = [
     why: (c) => {
       if (c.on) return `${at(c.hit)} 紫外線指數 ${r(c.hit.value)}（≥ ${T.uv} 建議）`;
       const [lo, hi] = T.uvHours;
-      return c.hours.some((h) => h.hour >= lo && h.hour <= hi) ? "通勤時段紫外線低" : `通勤時段不在 ${lo}–${hi} 時`;
+      return c.hours.some((h) => h.hour >= lo && h.hour <= hi) ? `${c.period}紫外線低` : `${c.period}不在 ${lo}–${hi} 時`;
     },
   },
   {

@@ -40,7 +40,8 @@ export function diffParts(diff) {
  *   name: string, elevation: (number|null), condition: string, wet: (object|null), rows: object[]}}
  *   `items` are checklist items with `tags` (`13:00・降雨 60%`, `明日 ` prefix, `全程・溫差 7°` for a range
  *   trigger); `wet` is the first slot with rainProb >= 40 (the `!RAIN` warning); `rows[i]` is a strip row
- *   `{ hourKey, hour, isTomorrow, comfort, level, temp, rain, best, aria }`.
+ *   `{ hourKey, hour, isTomorrow, comfort, level, temp, rain, wet, best, aria }` (`level` is the trip level: the
+ *   exercise level capped by rain; `wet` is rainProb >= 40, marked in text and not by colour alone).
  */
 export function tripModel({ vm, place, originVm }, trip, nowMs) {
   const slots = tripSlots(vm, trip.start, trip.end, nowMs);
@@ -57,8 +58,9 @@ export function tripModel({ vm, place, originVm }, trip, nowMs) {
     const inBest = Boolean(best) && i >= best.startIndex && i <= best.endIndex;
     const rain = num(s.rainProb);
     const t = `${s.isTomorrow ? "明日 " : ""}${pad2(s.hour)}:00`;
-    const aria = `${t}，${intText(s.temp)}度，降雨 ${rain === null ? "無資料" : `${Math.round(rain)}%`}，${s.comfort === null ? "舒適度無資料" : `舒適度 ${s.comfort}，${levelWord(s.level)}`}${inBest ? "，最佳時段" : ""}`;
-    return { hourKey: s.hourKey, hour: s.hour, isTomorrow: s.isTomorrow, comfort: s.comfort, level: s.level, temp: s.temp, rain, best: inBest, aria };
+    const isWet = rain !== null && rain >= T.rainProb;
+    const aria = `${t}，${intText(s.temp)}度，降雨 ${rain === null ? "無資料" : `${Math.round(rain)}%`}${isWet ? "，可能下雨" : ""}，${s.comfort === null ? "舒適度無資料" : `舒適度 ${s.comfort}，${levelWord(s.level)}`}${inBest ? "，最佳時段" : ""}`;
+    return { hourKey: s.hourKey, hour: s.hour, isTomorrow: s.isTomorrow, comfort: s.comfort, level: s.level, temp: s.temp, rain, wet: isWet, best: inBest, aria };
   });
   const wet = slots.find((s) => num(s.rainProb) !== null && s.rainProb >= T.rainProb) ?? null;
   const elev = num(vm?.location?.elevation) ?? num(place?.elevation);
@@ -89,15 +91,18 @@ function selectHtml(key, name, value) {
 }
 
 /**
- * Destination chips: saved places (toggle buttons, one pressed) and the search key that opens the
- * picker in trip mode.
+ * Destination chips: saved places (single-select: the chosen one has `aria-current="true"`) and the
+ * search key that opens the picker in trip mode. A chip shows the plain name, or the label with its
+ * admin1 (`新竹・新竹縣`) when two saved places share a name.
  * @param {object[]} saved Saved places.
  * @param {object|null} trip The trip place.
  * @returns {string} HTML.
  */
 function chipsBlock(saved, trip) {
+  const counts = new Map();
+  for (const p of saved) counts.set(p.name, (counts.get(p.name) ?? 0) + 1);
   const chips = saved
-    .map((p) => `<button type="button" class="key dest" data-k="d-${esc(p.id)}" id="dest-${esc(p.id)}" data-action="trip-pick" data-id="${esc(p.id)}" aria-pressed="${trip?.id === p.id}">${esc(p.name)}</button>`)
+    .map((p) => `<button type="button" class="key dest" data-k="d-${esc(p.id)}" id="dest-${esc(p.id)}" data-action="trip-pick" data-id="${esc(p.id)}"${trip?.id === p.id ? ' aria-current="true"' : ""}>${esc(counts.get(p.name) > 1 ? placeLabel(p) : p.name)}</button>`)
     .join("");
   return `<div class="dests" data-k="t-dests" role="group" aria-label="目的地">${chips}<button type="button" class="key dest dest--add" data-k="d-add" id="t-add" data-action="open-picker" data-mode="trip">＋ 搜尋</button></div>`;
 }
@@ -121,16 +126,22 @@ function heroHtml(m, place) {
 }
 
 /**
- * The comfort strip: one row per hour, bar length = comfort, best window ringed.
+ * The comfort strip: one row per hour, bar length = comfort, colour = trip level (an outlined fill),
+ * best window ringed; wet hours (rain >= 40%) carry a bold, underlined `雨70%` (text and shape, not colour alone).
+ * The legend names all three levels, the ring and the wet marker.
  * @param {object[]} rows `tripModel().rows`.
  * @returns {string} HTML.
  */
 function stripHtml(rows) {
   const items = rows
-    .map((r, i) => `<li class="srow${r.best ? " is-best" : ""}" data-k="s-${esc(r.hourKey)}"><span class="st" aria-hidden="true"><b>${pad2(r.hour)}</b>${r.isTomorrow ? "<i>明日</i>" : ""}</span><span class="strack" aria-hidden="true"><span class="sfill sfill--${r.level ?? "none"}" data-p="${r.comfort ?? 0}" data-i="${i}"></span></span><span class="sval" aria-hidden="true">${esc(intText(r.temp))}° 雨${r.rain === null ? "--" : Math.round(r.rain)}%</span><span class="sr-only">${esc(r.aria)}</span></li>`)
+    .map((r, i) => {
+      const rainText = `雨${r.rain === null ? "--" : Math.round(r.rain)}%`;
+      return `<li class="srow${r.best ? " is-best" : ""}${r.wet ? " is-wet" : ""}" data-k="s-${esc(r.hourKey)}"><span class="st" aria-hidden="true"><b>${pad2(r.hour)}</b>${r.isTomorrow ? "<i>明日</i>" : ""}</span><span class="strack" aria-hidden="true"><span class="sfill sfill--${r.level ?? "none"}" data-p="${r.comfort ?? 0}" data-i="${i}"></span></span><span class="sval" aria-hidden="true">${esc(intText(r.temp))}° ${r.wet ? `<b class="wet">${rainText}</b>` : rainText}</span><span class="sr-only">${esc(r.aria)}</span></li>`;
+    })
     .join("");
   const body = rows.length ? `<ol class="strip" aria-label="逐時舒適度">${items}</ol>` : `<p class="notice">這個時段沒有逐時資料</p>`;
-  return `<section class="card" data-k="t-strip" aria-label="逐時狀態"><div class="card-head"><span>逐時舒適度</span><span class="hint">長度 = 舒適度</span></div>${body}<p class="legend"><span>粉色 = 不建議</span><span>外框 = 最佳時段</span></p></section>`;
+  const legend = `<p class="legend"><span class="lg"><i class="sw sw--good" aria-hidden="true"></i>適合</span><span class="lg"><i class="sw sw--ok" aria-hidden="true"></i>普通</span><span class="lg"><i class="sw sw--bad" aria-hidden="true"></i>不建議</span><span class="lg"><i class="sw sw--best" aria-hidden="true"></i>外框 = 最佳時段</span><span class="lg"><b class="wet">雨</b> = 降雨機率 ≥ ${T.rainProb}%</span></p>`;
+  return `<section class="card" data-k="t-strip" aria-label="逐時狀態"><div class="card-head"><span>逐時舒適度</span><span class="hint">長度 = 舒適度（雨天不超過「普通」）</span></div>${body}${legend}</section>`;
 }
 
 /**

@@ -448,8 +448,9 @@ function expectedTrip(trip = { start: 9, end: 16 }, mutate) {
   return { d, o, model };
 }
 
+const TOMORROW_TRIP = { start: 9, end: 13 }; // already over at 14:20: tomorrow's window
 test("trip: enabled chip, destination from fixtures — diff, name, elevation, strip, best window, headline, checklist", async () => {
-  const app = await open({ storage: seed({ saved: [LAKE], tripId: LAKE.id }) });
+  const app = await open({ storage: seed({ saved: [LAKE], tripId: LAKE.id, extra: { "ps:outing": JSON.stringify({ scenario: "trip", trip: TOMORROW_TRIP }) } }) });
   const { page } = app;
   await visit(app);
   assert.equal(app.requests.filter((u) => /latitude=23\.87/.test(u)).length, 0, "the destination is not fetched outside the trip view");
@@ -461,7 +462,7 @@ test("trip: enabled chip, destination from fixtures — diff, name, elevation, s
   assert.equal(await page.locator("#nav-outing").getAttribute("aria-current"), "page");
   assert.equal((await storedJson(page, "ps:outing")).scenario, "trip");
 
-  const { model } = expectedTrip();
+  const { model } = expectedTrip(TOMORROW_TRIP);
   // the expected diff, derived from the raw fixtures independently of the app code
   const raw = (f) => f.hourly.temperature_2m[38];
   const expectedDiff = Math.round(raw(destForecast()) - raw(dayForecast()));
@@ -479,12 +480,13 @@ test("trip: enabled chip, destination from fixtures — diff, name, elevation, s
   assert.equal(await first.locator(".seg-g.on").count(), 1, "the middle one");
 
   // destination chips
-  assert.equal(await page.locator("#dest-p\\:23\\.87\\,120\\.91").getAttribute("aria-pressed"), "true");
+  assert.equal(await page.locator("#dest-p\\:23\\.87\\,120\\.91").getAttribute("aria-current"), "true");
+  assert.equal(await page.locator("#dest-p\\:23\\.87\\,120\\.91").getAttribute("aria-pressed"), null, "single-select chips are not toggles");
   assert.equal(norm(await page.locator("#t-add").innerText()), "＋ 搜尋");
 
-  // selects with the defaults
+  // selects with the stored window
   assert.equal(await page.locator("#sel-start").inputValue(), "9");
-  assert.equal(await page.locator("#sel-end").inputValue(), "16");
+  assert.equal(await page.locator("#sel-end").inputValue(), "13");
   assert.equal(await page.locator('label[for="sel-start"]').innerText(), "開始時間");
 
   // headline, strip and best window
@@ -494,7 +496,7 @@ test("trip: enabled chip, destination from fixtures — diff, name, elevation, s
     await page.$$eval(".srow", (els) => els.map((e) => e.querySelector(".sr-only").textContent)),
     model.rows.map((r) => r.aria),
   );
-  const slots = tripSlots(destVm(), 9, 16, DAY_MS);
+  const slots = tripSlots(destVm(), 9, 13, DAY_MS);
   const best = bestWindow(slots);
   assert.equal(await page.locator(".srow.is-best").count(), best.length);
   assert.deepEqual(await page.$$eval(".srow", (els) => els.map((e) => e.classList.contains("is-best"))), slots.map((_, i) => i >= best.startIndex && i <= best.endIndex));
@@ -513,6 +515,60 @@ test("trip: enabled chip, destination from fixtures — diff, name, elevation, s
     model.items.map((i) => [i.id, i.on, i.tags]),
   );
   assert.equal(await page.locator('[data-k="t-checklist"]').count(), 1);
+  noErrors(app);
+});
+
+test("trip: the default window 09-16 is running at 14:20, so it starts today at 14:00 (two rows, no 明日)", async () => {
+  const app = await open({ storage: seed({ saved: [LAKE], tripId: LAKE.id }) });
+  const { page } = app;
+  await visit(app, "#outing/trip");
+  await page.locator(".strip").waitFor();
+  assert.equal(await page.locator("#sel-start").inputValue(), "9");
+  assert.equal(await page.locator("#sel-end").inputValue(), "16");
+  assert.deepEqual(await page.$$eval(".srow .st b", (els) => els.map((e) => e.textContent)), ["14", "15"]);
+  assert.equal(await page.locator(".srow .st i").count(), 0);
+  assert.equal(await page.locator(".srow.is-best").count(), 0, "two hours are too short for a best window");
+  noErrors(app);
+});
+
+test("trip-day: 70% rain hours are bad, bold-underlined with their 雨70% text, and the legend explains every cue", async () => {
+  const wetLake = destForecast((f) => [39, 40, 41, 42].forEach((i) => (f.hourly.precipitation_probability[i] = 70)));
+  const app = await open({
+    storage: seed({ saved: [LAKE], tripId: LAKE.id, extra: { "ps:outing": JSON.stringify({ scenario: "trip", trip: { start: 15, end: 22 } }) } }),
+    forecastBy: placesForecasts({ lake: wetLake }),
+  });
+  const { page } = app;
+  await visit(app, "#outing/trip");
+  await page.locator(".strip").waitFor();
+  const rows = await page.$$eval(".srow", (els) => els.map((e) => ({
+    hour: e.querySelector(".st b").textContent,
+    level: [...e.querySelector(".sfill").classList].find((c) => /^sfill--/.test(c)),
+    wet: e.classList.contains("is-wet"),
+    marked: e.querySelector(".sval .wet")?.textContent ?? null,
+    underline: e.querySelector(".sval .wet") ? getComputedStyle(e.querySelector(".sval .wet")).textDecorationLine : null,
+    weight: e.querySelector(".sval .wet") ? getComputedStyle(e.querySelector(".sval .wet")).fontWeight : null,
+    aria: e.querySelector(".sr-only").textContent,
+  })));
+  const wetRows = rows.filter((r) => ["15", "16", "17", "18"].includes(r.hour));
+  assert.equal(wetRows.length, 4);
+  for (const r of wetRows) {
+    assert.equal(r.level, "sfill--bad", `${r.hour}:00 at 70% is bad`);
+    assert.equal(r.marked, "雨70%");
+    assert.equal(r.underline, "underline");
+    assert.equal(r.weight, "900");
+    assert.match(r.aria, /降雨 70%，可能下雨，舒適度 \d+，不建議/);
+  }
+  const dryRows = rows.filter((r) => !wetRows.includes(r));
+  assert.ok(dryRows.length >= 3 && dryRows.every((r) => !r.wet && r.marked === null && r.level !== "sfill--bad"));
+  // the best window is dry and after the wet hours; at 19-22 it is past sunset -> the fallback wording
+  const best = await page.$$eval(".srow.is-best .st b", (els) => els.map((e) => e.textContent));
+  assert.ok(best.length >= 3 && best.every((h) => Number(h) >= 19), `best window ${best}`);
+  assert.match(await page.locator("h1.headline").innerText(), /^15–19 時可能下雨，建議 19:00–22:00 遊玩（已日落）$/);
+  const legend = await page.locator(".legend").innerText();
+  for (const word of ["適合", "普通", "不建議", "外框 = 最佳時段", "降雨機率 ≥ 40%"]) assert.ok(legend.includes(word), `legend: ${word}`);
+  // every fill has a >= 3:1 edge: the computed border colour is --line against the card
+  const edges = await page.$$eval(".sfill", (els) => els.map((e) => getComputedStyle(e).borderTopWidth + " " + getComputedStyle(e).borderTopColor));
+  assert.ok(edges.every((e) => e === edges[0] && e.startsWith("2px")), edges.join());
   noErrors(app);
 });
 
@@ -549,7 +605,7 @@ test("trip: !RAIN is the single infinite animation (blink); none when dry", asyn
   assert.equal(await wet.page.locator(".warn").innerText(), "!RAIN");
   assert.equal(await wet.page.locator(".warn-at").innerText(), "15:00");
   assert.deepEqual(await infinite(wet.page), ["blink"]);
-  assert.match(await wet.page.locator("h1.headline").innerText(), /^15 時(起|後)可能下雨/);
+  assert.match(await wet.page.locator("h1.headline").innerText(), /^15–19 時可能下雨/, "names the wet span 15:00-19:00");
   const transitions = await wet.page.evaluate(() => document.getAnimations().map((a) => a.transitionProperty).filter(Boolean));
   assert.deepEqual(transitions.filter((p) => !["transform", "opacity"].includes(p)), []);
   noErrors(wet);
@@ -578,13 +634,13 @@ test("trip: empty state; a destination chip selects and fetches; ＋ 搜尋地�
   assert.equal(await page.locator(".hero").count(), 0);
   assert.equal(await page.locator(".strip").count(), 0);
   assert.equal(app.requests.filter((u) => /latitude=24\.80&/.test(u)).length, 0, "nothing fetched without a destination");
-  assert.equal(await page.locator("#dest-p\\:24\\.80\\,120\\.97").getAttribute("aria-pressed"), "false");
+  assert.equal(await page.locator("#dest-p\\:24\\.80\\,120\\.97").getAttribute("aria-current"), null);
 
   // choose the saved place from the chips
   await page.locator("#dest-p\\:24\\.80\\,120\\.97").click();
   await page.locator(".strip").waitFor();
   assert.equal((await storedJson(page, "ps:places")).tripId, WORK.id);
-  assert.equal(await page.locator("#dest-p\\:24\\.80\\,120\\.97").getAttribute("aria-pressed"), "true");
+  assert.equal(await page.locator("#dest-p\\:24\\.80\\,120\\.97").getAttribute("aria-current"), "true");
   assert.ok(app.requests.some((u) => /latitude=24\.80&longitude=120\.97/.test(u)));
 
   // the search key opens the picker in trip mode; adding a result makes it the destination and closes
@@ -622,7 +678,7 @@ test("trip: a failing destination shows its own error card with retry; Today and
   await page.locator(".error-card").waitFor();
   assert.match(await page.locator(".error-card").innerText(), /無法取得天氣資料/);
   assert.equal(await page.locator("h1.headline").innerText(), "目的地天氣暫時無法取得");
-  assert.equal(await page.locator("#dest-p\\:23\\.87\\,120\\.91").getAttribute("aria-pressed"), "true");
+  assert.equal(await page.locator("#dest-p\\:23\\.87\\,120\\.91").getAttribute("aria-current"), "true");
   await page.locator("#nav-today").click();
   await page.locator(".sun").waitFor();
   assert.equal(await page.locator(".error-card").count(), 0);

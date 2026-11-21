@@ -123,3 +123,27 @@ test("outing: text and surfaces use only existing tokens plus the three M3 addit
   assert.match(css, /--on-lime:\s*#000000/i);
   assert.match(css, /--bar-ok:\s*#8a8577/i);
 });
+
+// ---- M4 trip strip: every fill must read against the track (>= 3:1), colour is never the only cue -------------
+for (const [name, t] of [["day", day], ["night", night]]) {
+  test(`trip strip: every level's fill reads against the track >= 3:1 through its --line edge, and the neutral fill uses --bar-ok (${name})`, () => {
+    assert.equal(ruleVar(".sfill--ok", "background"), "bar-ok", "ok is the neutral grey (was --rain)");
+    assert.equal(ruleVar(".sfill--good", "background"), "ink");
+    assert.equal(ruleVar(".sfill--bad", "background"), "alert");
+    assert.equal(ruleVar(".sfill", "border"), "line", "the fill carries a --line edge");
+    assert.equal(ruleVar(".strack", "border"), "line");
+    const track = t.card; // the track has no background of its own: the card shows through
+    assert.ok(ratio(t.line, track) >= 3, `${name}: edge --line on the card = ${ratio(t.line, track).toFixed(2)}`);
+    for (const lvl of ["good", "ok", "bad"]) {
+      const fill = t[ruleVar(`.sfill--${lvl}`, "background")];
+      // the fill is either contrasting itself or enclosed by the >= 3:1 edge: its visible outline is the edge
+      assert.ok(ratio(fill, track) >= 3 || ratio(t.line, track) >= 3, `${name}: ${lvl}`);
+    }
+    for (const lvl of ["good", "ok"]) assert.ok(ratio(t[ruleVar(`.sfill--${lvl}`, "background")], track) >= 3, `${name}: ${lvl} fill on its own`);
+    // the legend swatches use the same colours and edge
+    for (const lvl of ["good", "ok", "bad"]) assert.equal(ruleVar(`.sw--${lvl}`, "background"), ruleVar(`.sfill--${lvl}`, "background"));
+    assert.equal(ruleVar(".sw", "border"), "line");
+    // wet hours: bold + --alert underline marker (shape and text, not colour alone)
+    assert.match(appCss, /\.wet \{[^}]*font-weight: 900;[^}]*text-decoration: underline 3px var\(--alert\)/);
+  });
+}

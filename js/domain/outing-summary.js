@@ -30,12 +30,13 @@ function period(h, tomorrow = false) {
  * @param {{combined?: object[], tomorrow?: {out?: boolean, back?: boolean}}} [opts] `combined`: the
  *   checklist evaluated over both legs together (the items the list shows); the mask and jacket
  *   branches use it so the headline never contradicts the list (default: the per-leg items).
- *   `tomorrow`: which legs fall on tomorrow, for the day words.
+ *   `tomorrow`: which legs fall on tomorrow, for the day words. `twoPlaces`: the legs use two different
+ *   places (current place and work place), so a large temperature range is a difference between places.
  * @returns {string} Priority: both legs empty `資料不足`; rain on both
  *   `來回都可能下雨`; back only `{period}回家會遇到雨`; out only `{period}出門可能下雨`
  *   (`明早 / 明天下午 / 明天傍晚 / 明晚` for a tomorrow leg); mask (AQI >= 100)
  *   `空氣品質差，記得戴口罩`; jacket `氣溫偏低，記得帶外套` (low feels) or `早晚溫差大，記得帶外套`
- *   (temperature range); PM2.5-only mask `PM2.5 偏高，敏感族群記得戴口罩`; sunscreen `紫外線強，記得防曬`;
+ *   (temperature range; `兩地溫差大，記得帶外套` when the legs are two different places); PM2.5-only mask `PM2.5 偏高，敏感族群記得戴口罩`; sunscreen `紫外線強，記得防曬`;
  *   else `來回都舒適` (so never shown while any combined item is on).
  */
 export function commuteHeadline(outItems, backItems, outHours, backHours, opts = {}) {
@@ -52,7 +53,7 @@ export function commuteHeadline(outItems, backItems, outHours, backHours, opts =
   const all = opts.combined ?? [...(outItems ?? []), ...(backItems ?? [])];
   if (maskOn(all)) return "空氣品質差，記得戴口罩";
   const jacket = all.find((i) => i.id === "jacket" && i.on);
-  if (jacket) return jacket.field === "temp" ? "早晚溫差大，記得帶外套" : "氣溫偏低，記得帶外套";
+  if (jacket) return jacket.field === "temp" ? (opts.twoPlaces ? "兩地溫差大，記得帶外套" : "早晚溫差大，記得帶外套") : "氣溫偏低，記得帶外套";
   if (on(all, "mask")) return "PM2.5 偏高，敏感族群記得戴口罩";
   if (on(all, "sunscreen")) return "紫外線強，記得防曬";
   return "來回都舒適";
