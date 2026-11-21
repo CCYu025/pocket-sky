@@ -11,6 +11,10 @@ import { renderToday } from "./ui/views/today.js";
 import { createAnnouncer } from "./ui/announce.js";
 import { createAnimTracker } from "./ui/anim.js";
 import { renderOuting } from "./ui/views/outing.js";
+import { exerciseModel, slotLabel, stepIndex } from "./ui/views/exercise.js";
+import { parseRoute } from "./ui/route.js";
+import { readOuting, writeOuting } from "./app/outing-state.js";
+import { createDebouncedAnnouncer, createOutingAnnouncer } from "./ui/announce.js";
 
 /** @returns {Storage|object} localStorage, or an in-memory stand-in when unavailable. */
 function safeStorage() {
@@ -49,10 +53,18 @@ const live = doc.getElementById("live");
 
 const announcer = createAnnouncer();
 const anim = createAnimTracker();
+const outingAnnouncer = createOutingAnnouncer();
+const outingSay = createDebouncedAnnouncer({ write: (m) => void (live.textContent = m), delay: 500 });
 
-/** @returns {'today'|'outing'} Current route from the hash (default today). */
+/** Transient Outing UI state (not persisted): picked exercise hour, flip counter, current visit. */
+const outingUi = { picked: null, flip: 0, visit: null };
+
+/**
+ * Current route from the hash (`today` by default; `#outing` opens the last used scenario).
+ * @returns {{name: 'today'|'outing', scenario: (string|null), key: string}}
+ */
 function currentRoute() {
-  return location.hash === "#outing" ? "outing" : "today";
+  return parseRoute(location.hash, readOuting(storage).scenario);
 }
 
 /**
@@ -98,19 +110,30 @@ function render() {
 
   renderLocation(state);
   for (const [r, el] of Object.entries(navLinks)) {
-    if (r === route) el.setAttribute("aria-current", "page");
+    if (r === route.name) el.setAttribute("aria-current", "page");
     else el.removeAttribute("aria-current");
   }
 
+  let outing = null;
+  if (route.name === "outing") {
+    outing = readOuting(storage);
+    if (outing.scenario !== route.scenario) {
+      outing = { ...outing, scenario: route.scenario };
+      writeOuting(storage, outing); // `#outing/exercise` becomes the scenario `#outing` reopens
+    }
+  }
+  if (route.key !== outingUi.visit) Object.assign(outingUi, { visit: route.key, picked: null, flip: 0 }); // new visit: default selection
+
   const focus = focusKey(doc.activeElement);
+  const hasData = Boolean(state.vm) && (state.status === "ready" || state.status === "stale");
   const flags = anim.next({
-    route,
-    hasData: route === "today" && Boolean(state.vm) && (state.status === "ready" || state.status === "stale"),
-    alertId: state.alert && state.vm ? state.alert.id : null,
+    route: route.key,
+    hasData,
+    alertId: route.name === "today" && state.alert && state.vm ? state.alert.id : null,
     continuation: Boolean(state.alert?.continuation),
   });
 
-  if (route === "outing") renderOuting(root);
+  if (outing) renderOuting(root, state, { outing, nowMs: now(), picked: outingUi.picked, flip: outingUi.flip });
   else renderToday(root, state, { attribution: ATTRIBUTION });
 
   // One-shot animations: `boot` once per route visit, shake when a new alert id appears.
@@ -126,6 +149,31 @@ function render() {
   // Single persistent live region: written only when an announced condition changes.
   const message = announcer.next(state);
   if (message) live.textContent = message;
+
+  // Outing: scenario change and the user-picked exercise hour, debounced 500 ms.
+  let selection = null;
+  if (outing?.scenario === "exercise" && hasData) {
+    const m = exerciseModel(state.vm, now(), outingUi.picked);
+    if (m.slot) selection = { key: m.slot.hourKey, text: slotLabel(m.slot), picked: m.picked };
+  }
+  outingSay.say(outingAnnouncer.next({ scenario: outing ? outing.scenario : null, selection }));
+}
+
+/**
+ * Select an exercise hour (bar, slider, 最佳 key or arrow keys). Plays the one-shot digit flip
+ * only when the selection actually changes.
+ * @param {string|undefined} hourKey
+ * @returns {boolean} true when the selection changed.
+ */
+function pickSlot(hourKey) {
+  const state = controller.store.get();
+  if (!hourKey || !state.vm) return false;
+  const cur = exerciseModel(state.vm, now(), outingUi.picked);
+  if (cur.slot?.hourKey === hourKey && outingUi.picked === hourKey) return false;
+  if (cur.slot?.hourKey !== hourKey) outingUi.flip += 1;
+  outingUi.picked = hourKey;
+  render();
+  return true;
 }
 
 /**
@@ -171,12 +219,49 @@ doc.getElementById("app").addEventListener("click", (e) => {
     case "retry":
       controller.refresh();
       break;
+    case "pick-slot":
+      pickSlot(el.dataset.hk);
+      break;
+    case "pick-best": {
+      const vm = controller.store.get().vm;
+      pickSlot(vm ? exerciseModel(vm, now(), null).best?.hourKey : undefined);
+      break;
+    }
     case "dismiss-alert":
       controller.dismissAlert();
       break;
     default:
       break; // "more": not implemented yet
   }
+});
+
+// Commute hour selectors (native <select>) persist to ps:outing.
+doc.getElementById("app").addEventListener("change", (e) => {
+  const el = e.target;
+  if (!(el instanceof HTMLSelectElement) || !el.dataset.field) return;
+  const o = readOuting(storage);
+  writeOuting(storage, { ...o, commute: { ...o.commute, [el.dataset.field]: Number(el.value) } });
+  render();
+});
+
+// Exercise range slider: one slot per step.
+doc.getElementById("app").addEventListener("input", (e) => {
+  const el = e.target;
+  if (!(el instanceof HTMLInputElement) || el.id !== "x-range") return;
+  pickSlot([...root.querySelectorAll(".xbar")][Number(el.value)]?.dataset.hk);
+});
+
+// Exercise bars: Left/Right (and Home/End) move the selection and the focus.
+doc.getElementById("app").addEventListener("keydown", (e) => {
+  const el = e.target instanceof Element ? e.target.closest(".xbar") : null;
+  if (!el || e.altKey || e.ctrlKey || e.metaKey) return;
+  const bars = [...root.querySelectorAll(".xbar")];
+  const next = stepIndex(e.key, bars.indexOf(el), bars.length);
+  if (next === null) return;
+  e.preventDefault();
+  const target = bars[next];
+  pickSlot(target.dataset.hk);
+  target.focus();
 });
 
 controller.store.subscribe(render);
