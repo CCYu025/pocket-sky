@@ -195,7 +195,6 @@ test("commute: rainy evening drives !RAIN on BACK, umbrella + jacket, leg attrib
 
   await noOverflow(page, "commute rain");
   await shot(page, "commute-rain", { dir: SHOTS_M3 });
-  await shot(page, "commute-viewport", { dir: SHOTS_M3, fullPage: false });
   noErrors(app);
 });
 
