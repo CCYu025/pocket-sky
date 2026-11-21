@@ -2,7 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startServer } from "./server.mjs";
 import {
-  launch, openApp, waitReady, settle, shot, overflow, trackTheme,
+  launch, openApp, waitReady, settle, shot, overflow, trackTheme, advanceTo,
   dayForecast, nightForecast, rainyForecast, coldDropForecast, airFixture, DAY_MS, NIGHT_MS, NIGHT_UTC,
 } from "./helpers.mjs";
 import { toViewModel } from "../../js/domain/derive.js";
@@ -346,6 +346,127 @@ test("CSP: no violations; bars and daylight fill are sized via CSSOM; ghost segm
   assert.notEqual(await display(".temp"), "none");
   assert.equal(await page.locator(".clock .seg7").evaluate((el) => el.classList.contains("seg7--noghost")), true);
   assert.equal(await page.locator(".temp .seg7").evaluate((el) => el.classList.contains("seg7--noghost")), false);
+  noErrors(app);
+});
+
+test("minute tick touches only clock, countdown and daylight nodes; focus and identity survive", async () => {
+  const app = await open({ forecast: rainyForecast() });
+  const { page } = app;
+  await app.go();
+  await waitReady(page);
+  await page.locator("a.attribution").focus();
+  await page.evaluate(() => {
+    const view = document.getElementById("view");
+    window.__keep = ["h1", ".alert", ".hero", ".lcd", ".bars", ".metrics", "a.attribution"].map((s) => [s, document.querySelector(s)]);
+    window.__muts = [];
+    new MutationObserver((recs) => {
+      for (const r of recs) {
+        const el = r.target.nodeType === 1 ? r.target : r.target.parentElement;
+        window.__muts.push({ inside: Boolean(el.closest(".clock, .sun-row, .daybar")), where: `${el.tagName}.${el.className?.baseVal ?? el.className}` });
+      }
+    }).observe(view, { subtree: true, childList: true, attributes: true, characterData: true });
+  });
+  await advanceTo(page, DAY_MS + 60e3); // 14:21, same hour, same data
+  await page.waitForFunction(() => document.querySelector('.clock [role="img"]').getAttribute("aria-label") === "時間 14:21");
+  const r = await page.evaluate(() => ({
+    muts: window.__muts,
+    same: window.__keep.every(([s, el]) => document.querySelector(s) === el),
+    focus: document.activeElement?.getAttribute("href") ?? null,
+  }));
+  assert.ok(r.muts.length > 0, "the clock did change");
+  assert.deepEqual(r.muts.filter((m) => !m.inside), [], "only clock / countdown / daylight nodes mutate");
+  assert.equal(r.same, true, "no node outside them was re-created");
+  assert.equal(r.focus, "https://open-meteo.com/", "focus on the attribution link survives the tick");
+  noErrors(app);
+});
+
+test("hour change re-renders (data differs) but keeps focus on the attribution link", async () => {
+  const app = await open({ forecast: rainyForecast() });
+  const { page } = app;
+  await app.go();
+  await waitReady(page);
+  await page.locator("a.attribution").focus();
+  await page.evaluate(() => { window.__attr = document.querySelector("a.attribution"); });
+  await advanceTo(page, DAY_MS + 40 * 60e3); // 15:00: new hour, stale cache -> refresh as well
+  await page.waitForFunction(() => document.querySelector('.clock [role="img"]').getAttribute("aria-label") === "時間 15:00");
+  await page.locator(".lcd-foot", { hasText: "UPD 15:00" }).waitFor();
+  const r = await page.evaluate(() => ({ focus: document.activeElement?.getAttribute("href") ?? null, same: document.querySelector("a.attribution") === window.__attr }));
+  assert.equal(r.focus, "https://open-meteo.com/");
+  assert.equal(r.same, true);
+  noErrors(app);
+});
+
+test("live region: one persistent polite region outside <main>; alert, stale and error are announced once each", async () => {
+  const app = await open({ forecast: rainyForecast(), expectedErrors: [/status of 500/] });
+  const { page } = app;
+  await app.ctx.addInitScript(() => {
+    window.__live = [];
+    new MutationObserver(() => {
+      const el = document.getElementById("live");
+      if (el && window.__live.at(-1) !== el.textContent && el.textContent) window.__live.push(el.textContent);
+    }).observe(document, { subtree: true, childList: true, characterData: true });
+  });
+  await app.go();
+  await waitReady(page);
+  assert.equal(await page.locator('[aria-live]').count(), 1);
+  assert.equal(await page.locator('#live[aria-live="polite"]').count(), 1);
+  assert.equal(await page.locator("main #live, main [aria-live], main [role=status], main [role=alert]").count(), 0, "nothing live inside the re-rendered view");
+  assert.deepEqual(await page.evaluate(() => window.__live), ["16:00 起可能下雨"]);
+
+  // tick + successful refresh: silent
+  await advanceTo(page, DAY_MS + 20 * 60e3);
+  await page.locator(".lcd-foot", { hasText: "UPD 14:40" }).waitFor();
+  assert.deepEqual(await page.evaluate(() => window.__live), ["16:00 起可能下雨"], "re-render did not re-announce");
+
+  // failing refresh: stale announced once
+  app.mode.forecast = "500";
+  await advanceTo(page, DAY_MS + 37 * 60e3); // 14:57 (cache from 14:40 is stale), still the 14:00 hour (same alert)
+  await page.locator(".banner").waitFor();
+  await advanceTo(page, DAY_MS + 38 * 60e3);
+  await page.waitForTimeout(150);
+  assert.deepEqual(await page.evaluate(() => window.__live), ["16:00 起可能下雨", "資料已過期"]);
+  assert.equal(await page.locator("#live").innerText(), "資料已過期");
+  noErrors(app);
+
+  const err = await open({ expectedErrors: [/status of 500/] });
+  err.mode.forecast = "500";
+  await err.go();
+  await err.page.locator('[data-action="retry"]').waitFor();
+  assert.equal(await err.page.locator("#live").textContent(), "無法取得天氣資料，請檢查網路後再試。");
+  assert.deepEqual(err.errors, []);
+});
+
+test("one-shot animations do not replay on refresh: boot once per visit, shake once per alert id", async () => {
+  const app = await open({ forecast: rainyForecast() });
+  const { page } = app;
+  await app.ctx.addInitScript(() => {
+    window.__starts = {};
+    document.addEventListener("animationstart", (e) => { window.__starts[e.animationName] = (window.__starts[e.animationName] ?? 0) + 1; }, true);
+  });
+  await app.go();
+  await waitReady(page);
+  await settle(page);
+  const first = await page.evaluate(() => ({ ...window.__starts }));
+  assert.equal(first.boot, 1);
+  assert.equal(first.shake, 1);
+  assert.equal(first.grow, 8);
+
+  // background refresh lands (onUpdate) -> re-render with new data, same alert
+  await advanceTo(page, DAY_MS + 20 * 60e3);
+  await page.locator(".lcd-foot", { hasText: "UPD 14:40" }).waitFor();
+  await settle(page);
+  assert.deepEqual(await page.evaluate(() => ({ ...window.__starts })), first, "no animation (re)started");
+  assert.equal(await page.locator("main").evaluate((el) => el.classList.contains("boot")), true, "boot class is left alone");
+
+  // leaving and returning is a new visit: boot runs again, the same alert does not shake again
+  await page.locator("#nav-outing").click();
+  await page.getByText("外出規劃：M3 開發中").waitFor();
+  await page.locator("#nav-today").click();
+  await page.locator(".metric").first().waitFor();
+  await settle(page);
+  const back = await page.evaluate(() => ({ ...window.__starts }));
+  assert.equal(back.boot, 2);
+  assert.equal(back.shake, 1);
   noErrors(app);
 });
 

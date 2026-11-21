@@ -28,6 +28,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 main { display: flex; flex-direction: column; gap: 14px; flex: 1; min-width: 0; }
 main:focus { outline: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* ---- top bar ---- */
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -216,14 +217,14 @@ main:focus { outline: none; }
 @keyframes grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 @keyframes boot { 0% { opacity: 0; } 25% { opacity: 1; } 35% { opacity: 0.25; } 50% { opacity: 1; } }
 
-.anim .lcd { animation: boot 0.9s ease-out 1 both; }
-.anim .alert { animation: shake 0.5s ease-out 0.4s 1 both; }
-.anim .bar { animation: grow 0.6s cubic-bezier(0.3, 1.3, 0.5, 1) both; animation-delay: calc(0.3s + var(--i) * 0.08s); }
+.boot .lcd { animation: boot 0.9s ease-out 1 both; } /* class set once per route visit (main.js) */
+[data-shake] .alert { animation: shake 0.5s ease-out 0.4s 1 both; } /* attribute set when a new alert id appears */
+.boot .bar { animation: grow 0.6s cubic-bezier(0.3, 1.3, 0.5, 1) both; animation-delay: calc(0.3s + var(--i) * 0.08s); }
 
 /* paused while the page is hidden (class set by main.js) */
 .is-hidden .clock .seg7-colon { animation-play-state: paused; }
 
 @media (prefers-reduced-motion: reduce) {
-  .clock .seg7-colon, .anim .lcd, .anim .alert, .anim .bar { animation: none; }
+  .clock .seg7-colon, .boot .lcd, [data-shake] .alert, .boot .bar { animation: none; }
   .key, .more { transition: none; }
 }

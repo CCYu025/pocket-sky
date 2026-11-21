@@ -8,6 +8,8 @@ import { createController } from "./app/controller.js";
 import { browserGeolocate } from "./app/geolocate.js";
 import { resolveTheme, nextPref, readPref, writePref, readLast, writeLast, THEME_COLORS } from "./ui/theme.js";
 import { renderToday } from "./ui/views/today.js";
+import { createAnnouncer } from "./ui/announce.js";
+import { createAnimTracker } from "./ui/anim.js";
 import { renderOuting } from "./ui/views/outing.js";
 
 /** @returns {Storage|object} localStorage, or an in-memory stand-in when unavailable. */
@@ -43,8 +45,10 @@ const locBtn = doc.getElementById("loc-btn");
 const lightBtn = doc.querySelector('[data-action="light"]');
 const navLinks = { today: doc.getElementById("nav-today"), outing: doc.getElementById("nav-outing") };
 const themeMeta = doc.querySelector('meta[name="theme-color"]');
+const live = doc.getElementById("live");
 
-let lastAnimKey = null;
+const announcer = createAnnouncer();
+const anim = createAnimTracker();
 
 /** @returns {'today'|'outing'} Current route from the hash (default today). */
 function currentRoute() {
@@ -98,18 +102,55 @@ function render() {
     else el.removeAttribute("aria-current");
   }
 
-  const activeAction = root.contains(doc.activeElement) ? doc.activeElement.dataset?.action : null;
-  const animKey = `${route}|${state.status === "loading" || state.status === "error" ? state.status : state.fetchedAt}`;
-  const animate = animKey !== lastAnimKey;
-  lastAnimKey = animKey;
+  const focus = focusKey(doc.activeElement);
+  const flags = anim.next({
+    route,
+    hasData: route === "today" && Boolean(state.vm) && (state.status === "ready" || state.status === "stale"),
+    alertId: state.alert && state.vm ? state.alert.id : null,
+  });
 
   if (route === "outing") renderOuting(root);
-  else renderToday(root, state, { attribution: ATTRIBUTION, animate });
+  else renderToday(root, state, { attribution: ATTRIBUTION });
 
-  if (activeAction) {
-    const again = root.querySelector(`[data-action="${activeAction}"]`);
-    (again ?? root).focus({ preventScroll: true });
+  // One-shot animations: `boot` once per route visit, shake when a new alert id appears.
+  root.classList.toggle("boot", flags.boot);
+  if (flags.restartShake) {
+    root.removeAttribute("data-shake");
+    void root.offsetWidth; // restart the animation for an element that is already in the DOM
   }
+  root.toggleAttribute("data-shake", flags.shake);
+
+  restoreFocus(focus);
+
+  // Single persistent live region: written only when an announced condition changes.
+  const message = announcer.next(state);
+  if (message) live.textContent = message;
+}
+
+/**
+ * Stable identity of a focused element inside the view: `id`, else `data-action`, else `href`.
+ * @param {Element|null} el
+ * @returns {{attr: string, value: string}|null} null when nothing inside the view is focused.
+ */
+function focusKey(el) {
+  if (!el || el === root || !root.contains(el)) return null;
+  if (el.id) return { attr: "id", value: el.id };
+  if (el.dataset?.action) return { attr: "data-action", value: el.dataset.action };
+  const href = el.getAttribute("href");
+  return href ? { attr: "href", value: href } : null;
+}
+
+/**
+ * After a re-render, put focus back on the element with the same stable key (no-op when the
+ * focused node survived; falls back to the view itself when its element is gone).
+ * @param {{attr: string, value: string}|null} key
+ */
+function restoreFocus(key) {
+  if (!key) return;
+  const active = doc.activeElement;
+  if (active && active !== root && root.contains(active)) return;
+  const again = [...root.querySelectorAll("[id],[data-action],[href]")].find((el) => el.getAttribute(key.attr) === key.value);
+  (again ?? root).focus({ preventScroll: true });
 }
 
 doc.getElementById("app").addEventListener("click", (e) => {

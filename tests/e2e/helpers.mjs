@@ -243,3 +243,13 @@ export async function trackTheme(app) {
     }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-theme"] });
   });
 }
+
+/**
+ * Move the fixed clock and fire the event the app listens to (`visibilitychange` -> tick + refreshIfStale).
+ * @param {object} page
+ * @param {number} ms Epoch ms.
+ */
+export async function advanceTo(page, ms) {
+  await page.clock.setFixedTime(new Date(ms));
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+}

@@ -4,6 +4,7 @@
  * @module ui/views/today
  */
 import { seg7Svg, escapeHtml as esc } from "../seg7.js";
+import { morphHtml } from "../morph.js";
 import { headline } from "../../domain/summary.js";
 import {
   compassZh, uvBand, aqiBand, humidityWord, intText, deltaText, dateLabel, clockOf, clockAt,
@@ -11,6 +12,7 @@ import {
 } from "../format.js";
 
 const BAR_COUNT = 8;
+export const ERROR_TEXT = "無法取得天氣資料，請檢查網路後再試。";
 
 /**
  * Build the five metric cards' content.
@@ -48,7 +50,7 @@ function hero(vm, fetchedAt) {
   const upd = ready && typeof fetchedAt === "number" ? clockAt(fetchedAt, vm.location.utcOffsetSeconds) : "--:--";
   const max = ready ? intText(vm.today.max) : "--";
   const min = ready ? intText(vm.today.min) : "--";
-  return `<section class="hero" aria-label="現在"><div class="lcd">
+  return `<section class="hero" data-k="hero" aria-label="現在"><div class="lcd">
 <div class="lcd-top"><span>${esc(ready ? dateLabel(vm.now.minuteKey) : "-- --")}</span><span class="clock">${seg7Svg(clock ?? "--:--", { height: 24, ghost: false, label: clock ? `時間 ${clock}` : "時間 無資料" })}</span></div>
 <div class="lcd-main"><div class="temp">${seg7Svg(temp, { height: 96, label: tempLabel })}<span class="unit" aria-hidden="true">°C</span></div>
 <div class="lcd-side"><span class="lcd-cond">${esc(ready ? vm.now.label ?? "--" : "--")}</span><span>體感 ${esc(ready ? intText(vm.now.feels) : "--")}°</span><span>${esc(max)}° / ${esc(min)}°</span></div></div>
@@ -68,7 +70,7 @@ function metrics(vm) {
   const cards = items
     .map((m) => `<div class="metric"><span class="k">${esc(m.k)}</span><span class="v">${esc(m.v)}</span><span class="s">${esc(m.s)}</span></div>`)
     .join("");
-  return `<section class="metrics" aria-label="重點指標">${cards}<button type="button" class="more" data-action="more" aria-label="更多指標（即將推出）">更多 <span aria-hidden="true">›</span></button></section>`;
+  return `<section class="metrics" data-k="metrics" aria-label="重點指標">${cards}<button type="button" class="more" data-action="more" aria-label="更多指標（即將推出）">更多 <span aria-hidden="true">›</span></button></section>`;
 }
 
 /**
@@ -80,7 +82,7 @@ function rainBars(vm) {
   const hours = vm ? vm.hours.slice(0, BAR_COUNT) : [];
   const head = `<div class="card-head"><span>逐時降雨</span><span class="hint">高度 = 機率</span></div>`;
   if (vm && hours.length === 0) {
-    return `<section class="card" aria-label="逐時降雨">${head}<p class="notice">沒有逐時資料</p></section>`;
+    return `<section class="card" data-k="rain" aria-label="逐時降雨">${head}<p class="notice">沒有逐時資料</p></section>`;
   }
   const slots = vm ? hours : Array.from({ length: BAR_COUNT }, () => ({ rainProb: null, hour: null }));
   const probs = slots.map((h) => (typeof h.rainProb === "number" ? Math.max(0, Math.min(100, h.rainProb)) : 0));
@@ -98,7 +100,7 @@ function rainBars(vm) {
     : probs[best] > 0
       ? `逐時降雨機率，${slots[best].hour === null ? "" : `${slots[best].hour} 時`}最高 ${Math.round(probs[best])}%`
       : "逐時降雨機率，未來 8 小時皆為 0%";
-  return `<section class="card" aria-label="逐時降雨">${head}<div class="bars" role="img" aria-label="${esc(desc)}">${bars}</div><div class="bar-labels">${labels}</div></section>`;
+  return `<section class="card" data-k="rain" aria-label="逐時降雨">${head}<div class="bars" role="img" aria-label="${esc(desc)}">${bars}</div><div class="bar-labels">${labels}</div></section>`;
 }
 
 /**
@@ -111,7 +113,7 @@ function sun(vm) {
   const set = vm ? clockOf(vm.today.sunset) : null;
   const pct = vm ? daylightPercent(vm) : null;
   const text = vm ? countdownText(vm) : null;
-  return `<section class="card sun" aria-label="日出日落"><div class="sun-row"><span>日出 ${esc(rise ?? "--:--")}</span><span>${esc(text ?? "--")}</span><span>日落 ${esc(set ?? "--:--")}</span></div>
+  return `<section class="card sun" data-k="sun" aria-label="日出日落"><div class="sun-row"><span>日出 ${esc(rise ?? "--:--")}</span><span>${esc(text ?? "--")}</span><span>日落 ${esc(set ?? "--:--")}</span></div>
 <div class="daybar" role="progressbar" aria-label="日照已過" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct ?? 0}"${pct === null ? ' aria-valuetext="無資料"' : ""}><div data-pct="${pct ?? 0}"></div></div></section>`;
 }
 
@@ -129,23 +131,23 @@ export function todayHtml(state, ui) {
   else if (!hasVm) title = "資料暫時無法取得";
   else title = headline(vm, alert);
 
-  const parts = [`<h1 class="headline">${esc(title)}</h1>`];
+  const parts = [`<h1 class="headline" data-k="headline">${esc(title)}</h1>`];
   if (alert && hasVm) {
     parts.push(
-      `<div class="alert" role="status"><span class="alert-text">${esc(alert.title)}・${esc(alert.detail)}</span><button type="button" class="alert-close" data-action="dismiss-alert" aria-label="關閉提醒">×</button></div>`,
+      `<div class="alert" data-k="alert"><span class="alert-text">${esc(alert.title)}・${esc(alert.detail)}</span><button type="button" class="alert-close" data-action="dismiss-alert" aria-label="關閉提醒">×</button></div>`,
     );
   }
   if (status === "stale" && hasVm) {
-    parts.push(`<p class="banner" role="status">資料時間 ${esc(clockAt(state.fetchedAt ?? 0, vm.location.utcOffsetSeconds))}・無法更新</p>`);
+    parts.push(`<p class="banner" data-k="stale">資料時間 ${esc(clockAt(state.fetchedAt ?? 0, vm.location.utcOffsetSeconds))}・無法更新</p>`);
   }
-  if (hasVm && vm.stale?.current) parts.push(`<p class="banner" role="status">觀測資料較舊，顯示預報值</p>`);
+  if (hasVm && vm.stale?.current) parts.push(`<p class="banner" data-k="obs">觀測資料較舊，顯示預報值</p>`);
   if (status === "error") {
-    parts.push(`<div class="error-card" role="alert"><p>無法取得天氣資料，請檢查網路後再試。</p><button type="button" class="key" data-action="retry">重試</button></div>`);
+    parts.push(`<div class="error-card" data-k="error"><p>${esc(ERROR_TEXT)}</p><button type="button" class="key" data-action="retry">重試</button></div>`);
   }
   const show = status === "loading" || status === "error" ? null : vm;
   parts.push(hero(show, state.fetchedAt));
   if (status !== "error") parts.push(metrics(show), rainBars(show), sun(show));
-  parts.push(`<a class="attribution" href="${esc(ui.attribution.href)}" rel="noopener" target="_blank">${esc(ui.attribution.text)}</a>`);
+  parts.push(`<a class="attribution" data-k="attribution" href="${esc(ui.attribution.href)}" rel="noopener" target="_blank">${esc(ui.attribution.text)}</a>`);
   return parts.join("\n");
 }
 
@@ -165,15 +167,18 @@ export function applyDynamicStyles(root) {
 }
 
 /**
- * Render the Today view into `root`.
+ * Render the Today view into `root` by reconciling the existing DOM with the new
+ * template (keyed by `data-k`): unchanged nodes keep their identity, so focus, running
+ * one-shot animations and the blinking colon survive refreshes and minute ticks, and
+ * only the nodes whose content changed are touched.
  * @param {HTMLElement} root The `<main>` element.
  * @param {object} state Controller state.
- * @param {{attribution: {text: string, href: string}, animate?: boolean}} ui
+ * @param {{attribution: {text: string, href: string}}} ui
  * @returns {void}
  */
 export function renderToday(root, state, ui) {
-  root.setAttribute("aria-busy", state.status === "loading" ? "true" : "false");
-  root.classList.toggle("anim", Boolean(ui.animate));
-  root.innerHTML = todayHtml(state, ui);
+  const busy = state.status === "loading" ? "true" : "false";
+  if (root.getAttribute("aria-busy") !== busy) root.setAttribute("aria-busy", busy); // no needless mutations
+  morphHtml(root, todayHtml(state, ui));
   applyDynamicStyles(root);
 }
