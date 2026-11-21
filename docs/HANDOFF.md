@@ -17,7 +17,7 @@
 | M2 | 今天頁：LCD、提醒、主題（日夜）、a11y、CSP | ✅ PR #2 已合併 |
 | M3 | 外出頁：通勤、運動、準備清單與評分規則 | ✅ PR #3 已合併 |
 | M4 | 地點搜尋／收藏、公司地點、出遊、manifest＋圖示 | ✅ PR #4 已合併 |
-| M5 | 離線降級、service worker、版面打磨、Lighthouse、部署 GitHub Pages | 🟡 分支 `m5-pwa-deploy` 進行中（規格見 ARCHITECTURE.md「M5」） |
+| M5 | 離線降級、service worker、版面打磨、Lighthouse、部署 GitHub Pages | 🟡 分支 `m5-pwa-deploy`：離線顯示、SW、Lighthouse（P98/A100/BP100/SEO91，`docs/reports/lighthouse-m5.md`）、Pages workflow、`site` e2e、冒煙腳本皆完成並驗證；待辦：使用者把 Pages Source 設為「GitHub Actions」、合併到 `main`、跑冒煙測試（見下） |
 
 ## 3. 交接當下的狀態（M4 收尾）
 
@@ -96,3 +96,9 @@ M4 測試基準：unit 508、e2e 88。
 - 搜尋最多顯示 8 筆，無分頁。
 - manifest 的 maskable 圖示與一般圖示相同（滿版設計，可接受）。
 - 第一次在夜間開啟（無任何快取）仍會先畫日間再切夜間。
+
+## M5 部署與冒煙測試（交接）
+- `sw-assets.js` 不再提交（建置產物）。本機直接開 repo 根目錄前先 `npm run sw`；e2e、`build:site`、Pages workflow 會自動產生。
+- 部署：Pages 尚未啟用。使用者在 Settings → Pages 把 Source 設為「GitHub Actions」（或經使用者同意後由 lead 用 API 啟用）。之後 push 到 `main`（或手動 `workflow_dispatch`）即部署，網址 `https://ccyu025.github.io/pocket-sky/`。
+- 部署後：`npm run smoke -- https://ccyu025.github.io/pocket-sky/`（Playwright + 真實 API；檢查載入、`度` 溫度、SW、manifest、無 console error）。尚未對正式網址執行；已用本機 `_site/` 搭配 `SMOKE_FIXTURES=1` 驗證腳本（當日 Open-Meteo forecast 因沙盒 IP 超過每日上限而回錯誤，Lighthouse 與冒煙驗證因此改用 fixtures）。
+- Lighthouse 為手動工具：`npm run lighthouse`（約 2 分鐘）。殘留：`robots-txt` 稽核因嚴格 CSP 在 Lighthouse 內顯示失敗（工具限制，非檔案問題）。

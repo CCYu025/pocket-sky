@@ -10,7 +10,15 @@ npm test               # 單元測試（離線、使用 fixtures）
 npm run test:contract  # 契約測試（呼叫真實 Open-Meteo API）
 npm run test:e2e       # 瀏覽器 E2E（Playwright + axe-core，使用 fixtures）
 npm run fixtures       # 重新擷取 tests/fixtures/
+npm run sw             # 產生 sw-assets.js（service worker 的預快取清單）
+npm run build:site     # 組出 _site/（只含執行期檔案，即 Pages 部署內容）
+npm run lighthouse     # Lighthouse 手機版品質檢查，寫入 docs/reports/lighthouse-m5.{json,md}（手動，不在 CI）
+npm run smoke -- <url> # 部署後冒煙測試（預設 https://ccyu025.github.io/pocket-sky/，使用真實 API）
 ```
+
+`sw-assets.js` 是建置產物（已加入 .gitignore，不提交）。直接以靜態伺服器開啟 repo 根目錄時，`sw.js` 需要它：clone 之後先執行一次 `npm run sw`，否則 service worker 註冊會 404。`npm run test:e2e`、`npm run build:site` 與 Pages 部署流程都會自動產生它。
+
+部署：push 到 `main` 觸發 `.github/workflows/pages.yml`（測試 → 組 `_site/` → GitHub Pages）。需先在 repo Settings → Pages 將 Source 設為「GitHub Actions」。
 
 E2E 預設不寫入任何檔案（字型以空 CSS 攔截，結果可重現）。重新產生文件截圖（`docs/screenshots/m2/`，含 390×844 首屏 `today-day-viewport.png`）：
 
