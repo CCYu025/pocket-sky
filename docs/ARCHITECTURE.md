@@ -63,6 +63,14 @@ Forecast query (single source of truth, exported as `FORECAST_PARAMS`):
 
 Air quality query (`AIR_PARAMS`): `current=us_aqi,pm2_5`, `hourly=us_aqi,pm2_5`, `timezone=auto`.
 
+### Verified API behaviour (contract tests, 2026-11-21)
+- `hourly.time` = 72 entries starting at 00:00 yesterday; `minutely_15.time` = 288; `daily.time` = 3 and is **date-only** (`YYYY-MM-DD`); `sunrise`/`sunset` are `YYYY-MM-DDTHH:MM`.
+- Multi-location forecast and air quality both return arrays; single location returns an object (client normalizes to array).
+- Air quality `hourly` defaults to 120 entries and is **not** aligned with forecast — always join by `hourKey`, never by index.
+- `minutely_15.precipitation_probability` is supported for Taiwan (not requested yet).
+- Geocoding with `language=zh`: `台中` → 0 results, `Taichung` → `臺中市`. UI search should retry with `台`→`臺` substitution, then fall back to the raw input in English.
+- Locally behind the session proxy, run contract tests with `NODE_USE_ENV_PROXY=1` (not needed on GitHub Actions).
+
 ### `js/domain/weathercode.js`
 - `describeWeather(code, isDay = true)` → `{ label: "多雲", icon: "cloud" }` (zh-Hant labels for every WMO code Open-Meteo documents; unknown → `{ label: "未知", icon: "unknown" }`).
 

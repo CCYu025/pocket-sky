@@ -65,7 +65,8 @@ function assertForecastShape(f, label) {
 }
 
 test('forecast: single location has every requested field', async () => {
-  const [f] = await getForecast([TAICHUNG], { fetchImpl: (u, o) => fetchWithRetry(u, o) });
+  // Large payload over a shared proxy: the 8 s production timeout is too tight for CI.
+  const [f] = await getForecast([TAICHUNG], { fetchImpl: (u, o) => fetchWithRetry(u, o), timeoutMs: 20000 });
   assertForecastShape(f, 'taichung');
 });
 
@@ -117,15 +118,15 @@ test('air quality: multi-location behaviour and shape', async (t) => {
   assert.ok(items.length >= 1);
   for (const [i, a] of items.entries()) assertAirShape(a, `air multi[${i}]`);
   // getAirQuality must always normalise to an array of the requested length
-  const viaClient = await getAirQuality([TAICHUNG, SUN_MOON_LAKE], { fetchImpl: (u, o) => fetchWithRetry(u, o) });
+  const viaClient = await getAirQuality([TAICHUNG, SUN_MOON_LAKE], { fetchImpl: (u, o) => fetchWithRetry(u, o), timeoutMs: 20000 });
   assert.ok(Array.isArray(viaClient));
   assert.equal(viaClient.length, 2, 'getAirQuality should return one entry per location');
 });
 
 test('geocoding: Chinese and English search (informational counts)', async (t) => {
-  const zh = await searchPlaces('台中', { fetchImpl: (u, o) => fetchWithRetry(u, o), language: 'zh' });
+  const zh = await searchPlaces('台中', { fetchImpl: (u, o) => fetchWithRetry(u, o), language: 'zh', timeoutMs: 20000 });
   console.log(`PROBE geocoding 台中 zh: ${zh.length} results: ${zh.map((p) => `${p.name}/${p.admin1}/${p.country}`).join(' ; ')}`);
-  const en = await searchPlaces('Taichung', { fetchImpl: (u, o) => fetchWithRetry(u, o), language: 'zh' });
+  const en = await searchPlaces('Taichung', { fetchImpl: (u, o) => fetchWithRetry(u, o), language: 'zh', timeoutMs: 20000 });
   console.log(`PROBE geocoding Taichung zh: ${en.length} results: ${en.map((p) => `${p.name}/${p.admin1}/${p.country}`).join(' ; ')}`);
   t.diagnostic(`台中: ${zh.length} results, Taichung: ${en.length} results`);
   assert.ok(en.length > 0, 'searching "Taichung" should return at least one place');
