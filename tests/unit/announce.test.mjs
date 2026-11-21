@@ -121,6 +121,8 @@ test("outing announcer: silent on load, announces scenario changes and user-pick
   assert.equal(a.next({ scenario: "exercise", selection: sel("19", true) }), null, "unchanged");
   assert.equal(a.next({ scenario: "exercise", selection: null }), null, "data went away");
   assert.equal(a.next({ scenario: "commute" }), "外出：通勤");
+  assert.equal(a.next({ scenario: "trip" }), "外出：出遊");
+  assert.equal(a.next({ scenario: "commute" }), "外出：通勤");
   assert.equal(a.next({ scenario: null }), null, "left the screen");
   assert.equal(a.next({ scenario: "commute" }), "外出：通勤", "coming back announces again");
 });

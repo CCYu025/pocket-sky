@@ -5,6 +5,7 @@
  * @module ui/announce
  */
 import { ERROR_TEXT } from "./views/today.js";
+import { SCENARIO_NAMES } from "./route.js";
 
 export const STALE_TEXT = "資料已過期";
 
@@ -44,7 +45,7 @@ export function createAnnouncer() {
  * @param {typeof clearTimeout} [deps.clearTimer]
  * @returns {{say: (message: (string|null|undefined)) => void, cancel: () => void}} `say` ignores empty messages.
  */
-export function createDebouncedAnnouncer({ write, delay = 500, setTimer = setTimeout, clearTimer = clearTimeout }) {
+export function createDebouncedAnnouncer({ write, delay = 500, setTimer = (fn, ms) => globalThis.setTimeout(fn, ms), clearTimer = (id) => globalThis.clearTimeout(id) }) {
   let timer = null;
   return {
     say(message) {
@@ -86,7 +87,7 @@ export function createOutingAnnouncer() {
       if (s !== scenario) {
         scenario = s;
         key = selKey;
-        return first ? null : `外出：${s === "exercise" ? "運動" : "通勤"}`;
+        return first ? null : `外出：${SCENARIO_NAMES[s] ?? "通勤"}`;
       }
       const changed = selKey !== key;
       key = selKey;

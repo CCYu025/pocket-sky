@@ -3,17 +3,17 @@
  * @module ui/route
  */
 
-export const SCENARIOS = Object.freeze(["commute", "exercise"]);
-export const SCENARIO_NAMES = Object.freeze({ commute: "通勤", exercise: "運動" });
+export const SCENARIOS = Object.freeze(["commute", "exercise", "trip"]);
+export const SCENARIO_NAMES = Object.freeze({ commute: "通勤", exercise: "運動", trip: "出遊" });
 
 /**
  * Parse `location.hash`.
- * `#outing` opens the last used scenario; `#outing/commute` and `#outing/exercise` open that
+ * `#outing` opens the last used scenario; `#outing/commute`, `#outing/exercise` and `#outing/trip` open that
  * scenario; an unknown scenario falls back to the last used one; every other hash is Today.
  * @param {string} hash e.g. `"#outing/exercise"`.
  * @param {string} [lastScenario] Last persisted scenario (default `commute`).
  * @returns {{name: 'today'|'outing', scenario: (string|null), key: string}} `key` is a stable route
- *   identity for animation bookkeeping: `today`, `outing/commute` or `outing/exercise`.
+ *   identity for animation bookkeeping: `today`, `outing/commute`, `outing/exercise` or `outing/trip`.
  */
 export function parseRoute(hash, lastScenario = "commute") {
   const m = /^#outing(?:\/([^/?]*))?\/?$/.exec(String(hash ?? ""));
@@ -25,7 +25,7 @@ export function parseRoute(hash, lastScenario = "commute") {
 
 /**
  * Link target for a scenario chip.
- * @param {string} scenario `commute` or `exercise`.
+ * @param {string} scenario `commute`, `exercise` or `trip`.
  * @returns {string} e.g. `#outing/commute`.
  */
 export function scenarioHref(scenario) {
