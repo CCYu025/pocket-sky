@@ -144,8 +144,8 @@ test("rain alert: shows, headline follows, dismiss persists across reload", asyn
   await close.click();
   assert.equal(await page.locator(".alert").count(), 0);
   const stored = JSON.parse(await page.evaluate(() => localStorage.getItem("ps:alerts")));
-  assert.deepEqual(stored.dismissed, { "rainJump:2026-11-21": true });
-  assert.equal(stored.lastShownId.rainJump, "rainJump:2026-11-21");
+  assert.deepEqual(stored.dismissed, { "rainJump:2026-11-21T16:00": true });
+  assert.equal(stored.lastShownId.rainJump, "rainJump:2026-11-21T16:00");
   assert.equal(typeof stored.lastShown.rainJump, "number");
 
   await page.reload();

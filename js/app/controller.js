@@ -24,6 +24,7 @@ export const DEFAULT_NOTICE = "使用預設地點：臺中";
  * @property {string|null} notice Small notice line (e.g. default location in use).
  * @property {*} error Last error when `status === 'error'`.
  * @property {{lat:number, lon:number, name:string, source:'gps'|'default'}|null} location
+ * @property {boolean} locating True while the device position is being resolved.
  */
 
 /**
@@ -40,13 +41,13 @@ export const DEFAULT_NOTICE = "使用預設地點：臺中";
  */
 export function createController({ api, cache, storage, now, geolocate, fetchImpl, defaultLocation = DEFAULT_LOCATION }) {
   /** @type {TodayState} */
-  const initial = { status: "loading", vm: null, alert: null, fetchedAt: null, notice: null, error: null, location: null };
+  const initial = { status: "loading", vm: null, alert: null, fetchedAt: null, notice: null, error: null, location: null, locating: false };
   const store = createStore(initial);
 
-  let gen = 0;
+  let gen = 0; // load generation: results of an older load are ignored
+  let locGen = 0; // locate generation: the last location request wins
   let loc = null;
   let forecastKey = null;
-  let airKey = null;
   let raw = { forecast: null, air: null };
 
   function computeAlert(vm) {
@@ -70,6 +71,13 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
     });
   }
 
+  /** Air data arrived (or refreshed): keep it, and rebuild the view if a forecast is already showing. */
+  function applyAir(air) {
+    raw.air = air;
+    const { status } = store.get();
+    if (raw.forecast && (status === "ready" || status === "stale")) rebuild(status);
+  }
+
   async function resolveLocation() {
     try {
       const p = await geolocate();
@@ -82,12 +90,28 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
     }
   }
 
+  /**
+   * Resolve the location; the latest request wins.
+   * @returns {Promise<{location: object, notice: string|null}|null>} null when a newer request superseded this one.
+   */
+  async function locate() {
+    const mine = ++locGen;
+    store.set({ locating: true });
+    const r = await resolveLocation();
+    if (mine !== locGen) return null;
+    store.set({ notice: r.notice, locating: false });
+    return r;
+  }
+
   async function load(location) {
     const myGen = ++gen;
-    const sameLoc = loc && loc.lat === location.lat && loc.lon === location.lon;
+    const fKey = cacheKey("forecast", location.lat, location.lon);
+    const aKey = cacheKey("air", location.lat, location.lon);
+    // Same place = same cache key (2 dp), so GPS jitter does not blank the screen.
+    const sameLoc = Boolean(loc) && forecastKey === fKey;
+    const wasStale = sameLoc && store.get().status === "stale";
     loc = location;
-    forecastKey = cacheKey("forecast", location.lat, location.lon);
-    airKey = cacheKey("air", location.lat, location.lon);
+    forecastKey = fKey;
     if (!(sameLoc && raw.forecast)) {
       raw = { forecast: null, air: null };
       store.set({ status: "loading", vm: null, alert: null, error: null, fetchedAt: null, location });
@@ -96,8 +120,8 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
     }
 
     let failed = false;
+    let updated = false; // a background refresh already applied newer data
     const base = { cache, now, fetchImpl };
-    const fKey = forecastKey;
     const forecastDeps = {
       ...base,
       onError: (err) => {
@@ -108,35 +132,46 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
       onUpdate: (fresh, meta) => {
         if (myGen !== gen || meta?.key !== fKey) return;
         raw.forecast = fresh[0];
+        updated = true;
         failed = false;
         rebuild("ready");
       },
     };
-    const aKey = airKey;
     const airDeps = {
       ...base,
       onError: () => {},
       onUpdate: (fresh, meta) => {
-        if (myGen !== gen || meta?.key !== aKey || !raw.forecast) return;
-        raw.air = fresh[0] ?? null;
-        rebuild(store.get().status === "stale" ? "stale" : "ready");
+        if (myGen !== gen || meta?.key !== aKey) return;
+        applyAir(fresh[0] ?? null);
       },
     };
 
+    // Air is independent and non-fatal: it never delays the forecast render.
+    const airDone = api.getAirQuality([location], airDeps).then(
+      (air) => {
+        if (myGen === gen) applyAir(air?.[0] ?? null);
+      },
+      () => {},
+    );
+
+    let forecast;
     try {
-      const [forecast, air] = await Promise.all([
-        api.getForecast([location], forecastDeps),
-        api.getAirQuality([location], airDeps).catch(() => null),
-      ]);
-      if (myGen !== gen) return;
-      raw.forecast = forecast[0];
-      raw.air = air?.[0] ?? null;
-      rebuild(failed ? "stale" : "ready");
+      forecast = await api.getForecast([location], forecastDeps);
     } catch (error) {
       if (myGen !== gen) return;
       if (raw.forecast) store.set({ status: "stale" });
       else store.set({ status: "error", vm: null, alert: null, error });
+      return;
     }
+    if (myGen !== gen) return;
+    if (!updated) {
+      raw.forecast = forecast[0];
+      // A stale cache hit has a refresh in flight: stay "stale" until it lands (onUpdate) or fails.
+      const entry = cache?.get(fKey);
+      const refreshing = Boolean(entry) && !entry.fresh;
+      rebuild(failed || (wasStale && refreshing) ? "stale" : "ready");
+    }
+    await airDone;
   }
 
   return {
@@ -148,9 +183,8 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
      */
     async init() {
       store.set({ status: "loading", vm: null, alert: null, error: null });
-      const r = await resolveLocation();
-      store.set({ notice: r.notice });
-      await load(r.location);
+      const r = await locate();
+      if (r) await load(r.location);
     },
 
     /**
@@ -161,9 +195,8 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
      */
     async refresh({ relocate = false } = {}) {
       if (!loc || relocate) {
-        const r = await resolveLocation();
-        store.set({ notice: r.notice });
-        return load(r.location);
+        const r = await locate();
+        return r ? load(r.location) : undefined;
       }
       return load(loc);
     },
@@ -192,7 +225,7 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
     },
 
     /**
-     * Dismiss the shown alert for the rest of the local day (persisted).
+     * Dismiss the shown alert event (persisted); other events are unaffected.
      * @returns {void}
      */
     dismissAlert() {

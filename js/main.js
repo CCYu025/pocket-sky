@@ -64,15 +64,33 @@ function applyTheme(state) {
   return theme;
 }
 
+let refocusLoc = false;
+
+/**
+ * Location button: "定位中…" (busy, disabled) while locating; the default-location
+ * notice is exposed through the aria-label instead of a visible line.
+ * @param {object} state Controller state.
+ */
+function renderLocation(state) {
+  const locating = Boolean(state.locating);
+  const name = locating || !state.location ? "定位中…" : state.location.name;
+  locBtn.firstChild.nodeValue = `${name} `;
+  locBtn.setAttribute("aria-label", locating || !state.location ? "定位中…" : `${name}，${state.notice ? `${state.notice}，` : ""}重新定位`);
+  locBtn.setAttribute("aria-busy", String(locating));
+  locBtn.disabled = locating;
+  if (!locating && refocusLoc) {
+    refocusLoc = false;
+    locBtn.focus({ preventScroll: true });
+  }
+}
+
 /** Re-render chrome and the active view. */
 function render() {
   const state = controller.store.get();
   const route = currentRoute();
   applyTheme(state);
 
-  const name = state.location?.name ?? "定位中";
-  locBtn.firstChild.nodeValue = `${name} `;
-  locBtn.setAttribute("aria-label", `${name}，重新定位`);
+  renderLocation(state);
   for (const [r, el] of Object.entries(navLinks)) {
     if (r === route) el.setAttribute("aria-current", "page");
     else el.removeAttribute("aria-current");
@@ -103,6 +121,7 @@ doc.getElementById("app").addEventListener("click", (e) => {
       break;
     }
     case "locate":
+      refocusLoc = true; // a disabled button drops focus; give it back when locating ends
       controller.refresh({ relocate: true });
       break;
     case "retry":

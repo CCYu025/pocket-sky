@@ -224,3 +224,197 @@ test("tick advances the clock without network; refreshIfStale skips a fresh cach
   assert.ok(ctx.calls.length > n);
 });
 
+// ---------------------------------------------------------------------------
+// Load ordering (forecast renders on its own; air is independent and non-fatal)
+// ---------------------------------------------------------------------------
+const FKEY = cacheKey("forecast", 24.16, 120.64);
+const AKEY = cacheKey("air", 24.16, 120.64);
+const denied = async () => { throw new Error("denied"); };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Controller on the real client with a fetch whose forecast/air responses the test controls. */
+async function manual({ geo = denied, seed } = {}) {
+  __resetInflight();
+  const storage = memStorage();
+  const clock = { t: NOW };
+  const cache = createCache({ storage, now: () => clock.t });
+  seed?.(cache, clock);
+  const api = await realApi();
+  const pending = { forecast: null, air: null };
+  const fetchImpl = (url) => {
+    const kind = url.includes("air-quality") ? "air" : "forecast";
+    return new Promise((resolve) => {
+      pending[kind] = (body, status = 200) => resolve(new Response(JSON.stringify(body), { status }));
+    });
+  };
+  const c = createController({ api, cache, storage, now: () => clock.t, geolocate: geo, fetchImpl });
+  const seen = [];
+  c.store.subscribe((s) => seen.push({ status: s.status, temp: s.vm?.now?.temp ?? null, aqi: s.vm?.air?.aqi ?? null, loading: s.status === "loading" }));
+  return { c, cache, clock, pending, seen, storage };
+}
+
+const withTemp = (t) => dayForecast((f) => { f.current.temperature_2m = t; });
+
+test("fast forecast refresh then slow air: the stale cached forecast never overwrites fresh data", async () => {
+  const m = await manual({
+    seed: (cache, clock) => {
+      clock.t = NOW - 3600e3;
+      cache.set(FKEY, [withTemp(99)], 15 * 60e3);
+      clock.t = NOW;
+    },
+  });
+  const done = m.c.init();
+  await sleep(10);
+  assert.equal(m.c.store.get().status, "ready", "cached forecast renders without waiting for air");
+  assert.equal(m.c.store.get().vm.now.temp, 99);
+  m.pending.forecast([withTemp(11)]); // background refresh lands while air is still pending
+  await sleep(10);
+  assert.equal(m.c.store.get().vm.now.temp, 11);
+  m.pending.air(fx("air-taichung.json"));
+  await done;
+  const s = m.c.store.get();
+  assert.equal(s.vm.now.temp, 11, "final state shows the fresh forecast");
+  assert.equal(s.vm.air.aqi, 84, "air is applied when it arrives");
+  const temps = m.seen.map((x) => x.temp).filter((t) => t !== null);
+  assert.deepEqual(temps.slice(temps.indexOf(11)), temps.slice(temps.indexOf(11)).map(() => 11), "no 99 after 11");
+});
+
+test("fresh forecast cache with hanging air: ready immediately, air null until it arrives", async () => {
+  const m = await manual({ seed: (cache) => cache.set(FKEY, [dayForecast()], 15 * 60e3) });
+  const done = m.c.init();
+  await sleep(20);
+  const s = m.c.store.get();
+  assert.equal(s.status, "ready");
+  assert.equal(s.vm.air, null);
+  m.pending.air(fx("air-taichung.json"));
+  await done;
+  assert.equal(m.c.store.get().status, "ready");
+  assert.equal(m.c.store.get().vm.air.aqi, 84);
+});
+
+test("air failure is non-fatal", async () => {
+  const m = await manual({ seed: (cache) => cache.set(FKEY, [dayForecast()], 15 * 60e3) });
+  const done = m.c.init();
+  await sleep(10);
+  m.pending.air({ error: true, reason: "boom" }, 500);
+  await done;
+  const s = m.c.store.get();
+  assert.equal(s.status, "ready");
+  assert.equal(s.vm.air, null);
+});
+
+test("stale banner does not flicker: a failing refresh of the same key never passes through ready", async () => {
+  const f = dayForecast();
+  const m = await manual({
+    seed: (cache, clock) => {
+      clock.t = NOW - 30 * 60e3;
+      cache.set(FKEY, [f], 15 * 60e3);
+      cache.set(AKEY, [fx("air-taichung.json")], 30 * 60e3);
+      clock.t = NOW;
+    },
+  });
+  const done = m.c.init();
+  await sleep(10);
+  m.pending.forecast({ error: true, reason: "x" }, 500); // background refresh fails -> stale
+  await done;
+  await sleep(20);
+  assert.equal(m.c.store.get().status, "stale");
+
+  m.seen.length = 0;
+  const again = m.c.refreshIfStale(); // visibility change while the entry is still not fresh
+  await sleep(10);
+  assert.equal(m.c.store.get().status, "stale", "stays stale while the refresh is in flight");
+  m.pending.forecast({ error: true, reason: "x" }, 500);
+  await again;
+  await sleep(20);
+  assert.equal(m.c.store.get().status, "stale");
+  assert.ok(!m.seen.some((x) => x.status === "ready"), `statuses: ${m.seen.map((x) => x.status)}`);
+});
+
+test("stale clears when the refresh succeeds", async () => {
+  const m = await manual({
+    seed: (cache, clock) => {
+      clock.t = NOW - 30 * 60e3;
+      cache.set(FKEY, [dayForecast()], 15 * 60e3);
+      cache.set(AKEY, [fx("air-taichung.json")], 30 * 60e3);
+      clock.t = NOW;
+    },
+  });
+  const done = m.c.init();
+  await sleep(10);
+  m.pending.forecast({ error: true, reason: "x" }, 500);
+  await done;
+  await sleep(20);
+  assert.equal(m.c.store.get().status, "stale");
+  const again = m.c.refreshIfStale();
+  await sleep(10);
+  m.pending.forecast(withTemp(12));
+  await again;
+  await sleep(20);
+  assert.equal(m.c.store.get().status, "ready");
+  assert.equal(m.c.store.get().vm.now.temp, 12);
+});
+
+// ---------------------------------------------------------------------------
+// Relocation
+// ---------------------------------------------------------------------------
+test("locating flag is true while the position is resolved", async () => {
+  let release;
+  const geo = () => new Promise((r) => { release = r; });
+  const m = await manual({ geo });
+  const p = m.c.init();
+  assert.equal(m.c.store.get().locating, true);
+  release({ lat: 24.15, lon: 120.67 });
+  await sleep(5);
+  assert.equal(m.c.store.get().locating, false);
+  m.pending.forecast(dayForecast());
+  m.pending.air(fx("air-taichung.json"));
+  await p;
+  assert.equal(m.c.store.get().status, "ready");
+
+  const again = m.c.refresh({ relocate: true });
+  assert.equal(m.c.store.get().locating, true);
+  release({ lat: 24.15, lon: 120.67 });
+  await sleep(5);
+  assert.equal(m.c.store.get().locating, false);
+  m.pending.forecast?.(dayForecast());
+  m.pending.air?.(fx("air-taichung.json"));
+  await again;
+});
+
+test("overlapping relocations: the last request wins, earlier results are ignored", async () => {
+  const ctx = setup();
+  const resolvers = [];
+  const geo = () => new Promise((r) => resolvers.push(r));
+  const c = await make({ ...ctx, geo });
+  const first = c.refresh({ relocate: true });
+  const second = c.refresh({ relocate: true });
+  assert.equal(resolvers.length, 2);
+  resolvers[1]({ lat: 22.0, lon: 121.0 }); // newer request answers first
+  await second;
+  resolvers[0]({ lat: 25.0, lon: 121.5 }); // older request answers late
+  await first;
+  const s = c.store.get();
+  assert.equal(s.status, "ready");
+  assert.equal(s.location.lat, 22.0);
+  assert.equal(s.locating, false);
+  assert.ok(ctx.calls.every((u) => !/latitude=25\.00/.test(u)), ctx.calls.join("\n"));
+});
+
+test("GPS jitter within the same 2-dp cache key does not reload or flash loading", async () => {
+  let pos = { lat: 24.15, lon: 120.67 };
+  const ctx = setup({ geo: async () => pos });
+  const c = await make(ctx);
+  await c.init();
+  const seen = [];
+  c.store.subscribe((s) => seen.push(s.status));
+  pos = { lat: 24.1504, lon: 120.6698 };
+  await c.refresh({ relocate: true });
+  assert.ok(!seen.includes("loading"), `statuses: ${seen}`);
+  assert.equal(c.store.get().status, "ready");
+  assert.ok(c.store.get().vm);
+  // a different place still reloads with a loading state
+  pos = { lat: 24.2, lon: 120.67 };
+  await c.refresh({ relocate: true });
+  assert.ok(seen.includes("loading"));
+});
