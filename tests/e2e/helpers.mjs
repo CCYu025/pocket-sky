@@ -181,17 +181,20 @@ export async function settle(page) {
 }
 
 /**
- * Screenshot to docs/screenshots/m2 (infinite animations are cancelled to their initial state
- * and one-shot ones fast-forwarded, so the output is stable).
+ * Screenshot to docs/screenshots/m2, **only** when `E2E_SCREENSHOTS=1` (a default run writes no files).
+ * Infinite animations are cancelled to their initial state and one-shot ones fast-forwarded,
+ * so the output is stable. Regenerate with `E2E_SCREENSHOTS=1 E2E_REAL_FONTS=1 npm run test:e2e`.
  * @param {object} page
  * @param {string} name File name without extension.
- * @returns {Promise<string>} Path.
+ * @param {{fullPage?: boolean}} [o] `fullPage: false` captures only the viewport (above the fold).
+ * @returns {Promise<string|null>} Path, or null when screenshots are disabled.
  */
-export async function shot(page, name) {
+export async function shot(page, name, { fullPage = true } = {}) {
+  if (process.env.E2E_SCREENSHOTS !== "1") return null;
   mkdirSync(SHOTS, { recursive: true });
   const file = path.join(SHOTS, `${name}.png`);
   await settle(page);
-  await page.screenshot({ path: file, animations: "disabled", fullPage: true });
+  await page.screenshot({ path: file, animations: "disabled", fullPage });
   return file;
 }
 
@@ -199,7 +202,8 @@ export async function shot(page, name) {
  * @param {object} page
  * @returns {Promise<{scrollWidth: number, clientWidth: number}>} Horizontal overflow metrics.
  */
-export function overflow(page) {
+export async function overflow(page) {
+  await page.evaluate(() => document.fonts.ready); // real webfonts (E2E_REAL_FONTS=1) can change widths
   return page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
     clientWidth: document.documentElement.clientWidth,

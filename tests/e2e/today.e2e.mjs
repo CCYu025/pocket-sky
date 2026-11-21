@@ -80,6 +80,7 @@ test("day: headline, LCD labels, metrics and sun row match the fixture", async (
   assert.equal(await page.locator('meta[name="theme-color"]').getAttribute("content"), "#FFF7D6");
   await noOverflow(app);
   await shot(page, "today-day");
+  await shot(page, "today-day-viewport", { fullPage: false }); // what is visible above the fold at 390x844
   noErrors(app);
 });
 
