@@ -16,8 +16,8 @@
 | M1 | 資料層：time / cache / store / Open-Meteo client / derive | ✅ PR #1 已合併 |
 | M2 | 今天頁：LCD、提醒、主題（日夜）、a11y、CSP | ✅ PR #2 已合併 |
 | M3 | 外出頁：通勤、運動、準備清單與評分規則 | ✅ PR #3 已合併 |
-| M4 | 地點搜尋／收藏、公司地點、出遊、manifest＋圖示 | 🟡 分支 `m4-places`，全部修正完成，PR #4 已開、等使用者同意合併（見 §3） |
-| M5 | 動畫細節、離線降級、service worker、Lighthouse、部署 GitHub Pages | ⬜ 未開始 |
+| M4 | 地點搜尋／收藏、公司地點、出遊、manifest＋圖示 | ✅ PR #4 已合併 |
+| M5 | 離線降級、service worker、版面打磨、Lighthouse、部署 GitHub Pages | 🟡 分支 `m5-pwa-deploy` 進行中（規格見 ARCHITECTURE.md「M5」） |
 
 ## 3. 交接當下的狀態（M4 收尾）
 
