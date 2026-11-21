@@ -1,6 +1,6 @@
 /**
  * Generate `sw-assets.js`: the precache list and a content hash for the service worker.
- * Usage: `npm run sw` (writes the file). Imported by tests, which compare `render()` with the committed file.
+ * Usage: `npm run sw` (writes the file; it is generated, git-ignored and rebuilt by `pretest:e2e`, the e2e test server and the Pages workflow).
  */
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";

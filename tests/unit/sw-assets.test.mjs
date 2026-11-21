@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { render, collect, ROOT } from "../../scripts/gen-sw-assets.mjs";
 
@@ -9,8 +10,32 @@ const listJs = (dir) =>
     e.isDirectory() ? listJs(`${dir}/${e.name}`) : e.name.endsWith(".js") ? [`${dir}/${e.name}`] : [],
   );
 
-test("sw-assets.js is up to date (run `npm run sw`)", () => {
-  assert.equal(readFileSync(path.join(ROOT, "sw-assets.js"), "utf8"), render());
+test("collect()/render() are deterministic and agree", () => {
+  assert.deepEqual(collect(), collect());
+  assert.equal(render(), render());
+  const { assets, version } = collect();
+  const out = render();
+  assert.ok(out.includes(`self.SW_ASSETS = ${JSON.stringify(assets, null, 2)};`));
+  assert.ok(out.includes(`self.SW_VERSION = "${version}";`));
+});
+
+test("version changes with content, not with an unrelated file", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ps-sw-"));
+  try {
+    for (const d of ["css", "js", "icons"]) mkdirSync(path.join(dir, d));
+    writeFileSync(path.join(dir, "index.html"), "a");
+    writeFileSync(path.join(dir, "manifest.webmanifest"), "{}");
+    writeFileSync(path.join(dir, "js/a.js"), "1");
+    writeFileSync(path.join(dir, "js/a.test.txt"), "ignored");
+    const v1 = collect(dir).version;
+    writeFileSync(path.join(dir, "README.md"), "x");
+    assert.equal(collect(dir).version, v1);
+    writeFileSync(path.join(dir, "js/a.js"), "2");
+    assert.notEqual(collect(dir).version, v1);
+    assert.deepEqual(collect(dir).assets, ["index.html", "js/a.js", "manifest.webmanifest"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("asset list: sorted, every runtime js file, shell files, no tests/docs/sw", () => {
