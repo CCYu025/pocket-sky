@@ -1,0 +1,72 @@
+/**
+ * Post-deploy smoke test against a live URL with the REAL Open-Meteo API.
+ * `SMOKE_FIXTURES=1` answers the Open-Meteo calls from the test fixtures instead (only to validate this script when the real API is unreachable or rate limited).
+ * Usage: `npm run smoke -- [url]` (default: the public Pages URL). Not part of `npm test` / e2e.
+ */
+import { loadPlaywright, dayForecast, airFixture, DAY_UTC } from "../e2e/helpers.mjs";
+
+const url = process.argv[2] || "https://ccyu025.github.io/pocket-sky/";
+const base = url.endsWith("/") ? url : `${url}/`;
+const results = [];
+const check = (name, ok, detail = "") => {
+  results.push(ok);
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
+};
+
+const { chromium } = loadPlaywright();
+const browser = await chromium.launch({ args: ["--no-sandbox"] });
+try {
+  const ctx = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    locale: "zh-TW",
+    timezoneId: "Asia/Taipei",
+    geolocation: { latitude: 25.033, longitude: 121.565 },
+    permissions: ["geolocation"],
+    serviceWorkers: "allow",
+  });
+  const page = await ctx.newPage();
+  if (process.env.SMOKE_FIXTURES === "1") {
+    await page.clock.setFixedTime(new Date(DAY_UTC));
+    const body = (b) => ({ status: 200, contentType: "application/json", body: JSON.stringify(b) });
+    await ctx.route("**/api.open-meteo.com/**", (r) => r.fulfill(body(dayForecast())));
+    await ctx.route("**/air-quality-api.open-meteo.com/**", (r) => r.fulfill(body(airFixture())));
+  }
+  const errors = [];
+  page.on("console", (m) => m.type() === "error" && errors.push(`console: ${m.text()}`));
+  page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
+
+  const res = await page.goto(base, { waitUntil: "load" });
+  check("page loads", res?.ok() === true, `${res?.status()} ${base}`);
+  check("title", (await page.title()) === "Pocket Sky", await page.title());
+
+  let label = "";
+  try {
+    await page.waitForFunction(() => /度/.test(document.querySelector(".temp [aria-label]")?.getAttribute("aria-label") ?? ""), null, { timeout: 30000 });
+    label = await page.locator(".temp [aria-label]").first().getAttribute("aria-label");
+  } catch {
+    label = (await page.locator(".temp [aria-label]").first().getAttribute("aria-label").catch(() => "")) ?? "";
+  }
+  check("Today shows a temperature", label.includes("度"), label);
+
+  const sw = await page
+    .evaluate(async () => {
+      const reg = await navigator.serviceWorker.ready;
+      return reg.scope;
+    })
+    .catch((e) => String(e));
+  check("service worker registers", sw.startsWith(base), sw);
+
+  const mHref = await page.locator('link[rel="manifest"]').getAttribute("href");
+  const mRes = await ctx.request.get(new URL(mHref, base).href);
+  const mJson = mRes.ok() ? await mRes.json().catch(() => null) : null;
+  check("manifest fetches", Boolean(mJson?.name), `${mRes.status()} ${mJson?.name ?? ""}`);
+
+  check("no console errors", errors.length === 0, errors.join(" | "));
+} catch (e) {
+  check("smoke run", false, e.message);
+} finally {
+  await browser.close();
+}
+const failed = results.filter((r) => !r).length;
+console.log(failed ? `\n${failed} check(s) failed` : "\nsmoke OK");
+process.exit(failed ? 1 : 0);
