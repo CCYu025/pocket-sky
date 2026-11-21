@@ -1,0 +1,15 @@
+{
+  "name": "pocket-sky",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mobile-first weather web app powered by Open-Meteo",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test \"tests/unit/**/*.test.mjs\"",
+    "test:contract": "node --test \"tests/contract/**/*.test.mjs\"",
+    "fixtures": "node tests/contract/capture-fixtures.mjs"
+  }
+}
