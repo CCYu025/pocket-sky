@@ -221,6 +221,7 @@ export async function openApp(browser, baseUrl, o = {}) {
   const ctx = await browser.newContext({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
+    serviceWorkers: o.serviceWorkers ?? "block", // only sw.e2e.mjs opts in
     locale: "zh-TW",
     timezoneId: "America/New_York",
     reducedMotion: o.reducedMotion ?? "no-preference",
