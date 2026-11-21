@@ -16,17 +16,27 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/; // daily.time is date-only
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** fetchJson with retries (shared egress IPs can hit 429 / transient proxy errors). */
-async function fj(url) {
+/** True for failures worth retrying: timeout/network (status 0), 429, 5xx. */
+const isTransient = (err) => err instanceof ApiError && (err.status === 0 || err.status === 429 || err.status >= 500);
+
+/**
+ * Retry a whole call on transient failures (shared egress IPs hit 429 and
+ * occasional proxy stalls). Each attempt gets a fresh timeout/AbortSignal,
+ * which a retrying fetchImpl alone cannot provide. Backoff: 5, 10, 20 s.
+ */
+async function withRetry(fn, attempts = 4) {
   for (let i = 0; ; i++) {
     try {
-      return await fetchJson(url, { timeoutMs: 20000 });
+      return await fn();
     } catch (err) {
-      if (i >= 3 || !(err instanceof ApiError) || (err.status !== 0 && err.status !== 429 && err.status < 500)) throw err;
-      await sleep(4000 * (i + 1));
+      if (i >= attempts - 1 || !isTransient(err)) throw err;
+      await sleep(5000 * 2 ** i);
     }
   }
 }
+
+/** fetchJson with retries. */
+const fj = (url) => withRetry(() => fetchJson(url, { timeoutMs: 20000 }));
 
 /** Assert a section has `time` plus every requested field with equal-length arrays. */
 function assertSection(obj, section, fields, label) {
@@ -69,7 +79,7 @@ function assertForecastShape(f, label) {
 
 test('forecast: single location has every requested field', async () => {
   // Large payload over a shared proxy: the 8 s production timeout is too tight for CI.
-  const [f] = await getForecast([TAICHUNG], { fetchImpl: (u, o) => fetchWithRetry(u, o), timeoutMs: 20000 });
+  const [f] = await withRetry(() => getForecast([TAICHUNG], { fetchImpl: (u, o) => fetchWithRetry(u, o), timeoutMs: 20000 }));
   assertForecastShape(f, 'taichung');
 });
 
@@ -115,7 +125,7 @@ test('air quality: single location shape', async () => {
 });
 
 test('air quality hourly is joined to forecast by hourKey (not index-aligned in general)', async (t) => {
-  const [f] = await getForecast([TAICHUNG], { fetchImpl: (u, o) => fetchWithRetry(u, o), timeoutMs: 20000 });
+  const [f] = await withRetry(() => getForecast([TAICHUNG], { fetchImpl: (u, o) => fetchWithRetry(u, o), timeoutMs: 20000 }));
   const air = await fj(buildAirQualityUrl([TAICHUNG]));
   const airKeys = new Set(air.hourly.time);
   const matches = f.hourly.time.filter((k) => airKeys.has(k)).length;
@@ -131,15 +141,15 @@ test('air quality: multi-location behaviour and shape', async (t) => {
   assert.ok(items.length >= 1);
   for (const [i, a] of items.entries()) assertAirShape(a, `air multi[${i}]`);
   // getAirQuality must always normalise to an array of the requested length
-  const viaClient = await getAirQuality([TAICHUNG, SUN_MOON_LAKE], { fetchImpl: (u, o) => fetchWithRetry(u, o), timeoutMs: 20000 });
+  const viaClient = await withRetry(() => getAirQuality([TAICHUNG, SUN_MOON_LAKE], { fetchImpl: (u, o) => fetchWithRetry(u, o), timeoutMs: 20000 }));
   assert.ok(Array.isArray(viaClient));
   assert.equal(viaClient.length, 2, 'getAirQuality should return one entry per location');
 });
 
 test('geocoding: Chinese and English search (informational counts)', async (t) => {
-  const zh = await searchPlaces('台中', { fetchImpl: (u, o) => fetchWithRetry(u, o), language: 'zh', timeoutMs: 20000 });
+  const zh = await withRetry(() => searchPlaces('台中', { fetchImpl: (u, o) => fetchWithRetry(u, o), language: 'zh', timeoutMs: 20000 }));
   console.log(`PROBE geocoding 台中 zh: ${zh.length} results: ${zh.map((p) => `${p.name}/${p.admin1}/${p.country}`).join(' ; ')}`);
-  const en = await searchPlaces('Taichung', { fetchImpl: (u, o) => fetchWithRetry(u, o), language: 'zh', timeoutMs: 20000 });
+  const en = await withRetry(() => searchPlaces('Taichung', { fetchImpl: (u, o) => fetchWithRetry(u, o), language: 'zh', timeoutMs: 20000 }));
   console.log(`PROBE geocoding Taichung zh: ${en.length} results: ${en.map((p) => `${p.name}/${p.admin1}/${p.country}`).join(' ; ')}`);
   t.diagnostic(`台中: ${zh.length} results, Taichung: ${en.length} results`);
   assert.ok(en.length > 0, 'searching "Taichung" should return at least one place');
