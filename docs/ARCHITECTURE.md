@@ -173,3 +173,46 @@ Tokens live in `css/tokens.css` as CSS custom properties; `[data-theme="night"]`
 ### Testing (M2)
 - Unit (node --test): seg7 (segment map for every char, markup structure, escaping, colon), alerts (each rule boundary, cooldown, dismissed, same-id re-render, hoursAvailable=false), summary (each priority branch), theme decision (pure helper `resolveTheme(pref, vm, nowMs)` in `js/ui/theme.js`).
 - E2E (Playwright library + node --test, no @playwright/test): `tests/e2e/*.e2e.mjs`, run via `npm run test:e2e`; tiny static server `tests/e2e/server.mjs`; intercept Open-Meteo with fixtures (plus synthetic rainy/cold scenarios derived in-test); fixed clock via `page.clock`; geolocation granted/denied via context options. Viewport 390×844. Screenshots are written to `docs/screenshots/m2/` (day, day-viewport (390×844 above the fold), night, alert, reduced-motion, loading, error, stale) **only** when `E2E_SCREENSHOTS=1`; a default run writes no files. `E2E_REAL_FONTS=1` loads the real Google Fonts (default: fonts are stubbed so the run is hermetic), and the whole suite, including the overflow/layout assertions, then runs with them. Regenerate: `E2E_SCREENSHOTS=1 E2E_REAL_FONTS=1 npm run test:e2e`. axe-core (devDependency) injected per state: 0 serious/critical violations. No console errors.
+
+## M3 — Outing screen (commute & exercise)
+
+Scope: `#outing` with scenario chips 通勤 / 運動 / 出遊 (出遊 disabled, labelled `v2`, `aria-disabled="true"`). Both scenarios use the current location (separate work location and destinations arrive with geocoding search in M4). Visual references (approved wireframes): "A2 外出：通勤" and "A3 外出：運動".
+
+### Routing & persistence
+- Hash routes: `#outing` (opens the last used scenario, default commute), `#outing/commute`, `#outing/exercise`. Bottom key 外出 stays `aria-current` for all of them.
+- `localStorage['ps:outing']` = `{ scenario: 'commute'|'exercise', commute: { out: 0-23, back: 0-23 } }`, defaults `{ scenario:'commute', commute:{ out: 8, back: 18 } }`; invalid values fall back to defaults; never throws.
+
+### `js/rules/config.js` (data only)
+```js
+export const CHECKLIST_RULES = [
+  { id: 'umbrella',  label: '雨傘',  any: [{ field: 'rainProb', op: '>=', value: 40 }, { field: 'rain', op: '>=', value: 0.5 }], why: ... },
+  { id: 'jacket',    label: '外套',  any: [{ agg: 'min', field: 'feels', op: '<=', value: 18 }, { agg: 'range', field: 'temp', op: '>=', value: 6 }], why: ... },
+  { id: 'sunscreen', label: '防曬',  any: [{ field: 'uv', op: '>=', value: 6, hours: [10, 15] }], why: ... },
+  { id: 'mask',      label: '口罩',  any: [{ field: 'aqi', op: '>=', value: 100 }, { field: 'pm25', op: '>=', value: 35 }], why: ... },
+];
+export const EXERCISE_SCORING = { factors: { temp: [[5,20],[12,70],[18,100],[24,100],[30,40],[35,0]], feelsDelta?: …, humidity: [[30,100],[60,100],[85,40],[100,20]], rainProb: [[0,100],[20,90],[50,30],[80,0]], wind: [[0,100],[20,90],[35,40],[50,0]], aqi: [[0,100],[50,100],[100,50],[150,0]], uv: [[0,100],[5,100],[8,50],[11,20]] }, weights: { temp: 3, humidity: 1, rainProb: 3, wind: 1, aqi: 2, uv: 1 }, levels: { good: 75, ok: 50 } };
+```
+- Default `agg` is `max`/"any hour matches". `why` is a template producing zh-Hant text with the triggering value (e.g. `18:00 降雨機率 60%（≥ 40% 建議）`). Thresholds live only here.
+- Piecewise-linear curves: points `[x, score]`, clamped at both ends. A factor whose value is `null` is skipped and the weights renormalised; if all factors are null the score is `null`.
+
+### `js/rules/checklist.js` (pure)
+- `evaluateChecklist(hours, rules = CHECKLIST_RULES)` → `[{ id, label, on, why }]` in rule order; `why` explains the trigger when `on`, or the reassuring reason when off (e.g. `通勤時段紫外線低`, `空氣品質良好 AQI 42`, `資料不足` when every relevant value is null).
+- `legHours(vmHours, hour, span = 2)` → the entries of `vm.hours` whose `hour` ∈ `[hour, hour+span)` on the next occurrence of that hour (today if not yet passed — current hour counts — else tomorrow); `[]` if outside the 24 h horizon.
+
+### `js/rules/exercise.js` (pure)
+- `scoreHour(h, cfg = EXERCISE_SCORING)` → integer 0–100 or `null`.
+- `exerciseSlots(vm, nowMs)` → for each hourKey in `exerciseWindow(utcOffsetSeconds, nowMs)` that exists in `vm.hours`: `{ hourKey, hour, score, level: 'good'|'ok'|'bad'|null, isTomorrow, metrics: { temp, feels, humidity, rainProb, wind, uv, aqi } }`.
+- `bestSlot(slots)` → highest score (earliest on ties) or `null`.
+- `exerciseAdvice(slot)` → one short zh-Hant line: rain ≥ 50 → `降雨機率 X%，建議改室內`; feels ≥ 30 → `偏熱，多補水`; aqi ≥ 100 → `空氣品質差，建議室內`; level good → `涼爽少雨，適合慢跑或騎車`; else `留意天氣變化`.
+
+### `js/domain/outing-summary.js` (pure)
+- `commuteHeadline(outItems, backItems, outHours, backHours)` → e.g. `傍晚回家會遇到雨` / `早上出門可能下雨` / `來回都舒適`, `資料不足` when both legs empty.
+
+### Views
+- Commute (`js/ui/views/commute.js`): hero LCD with two legs (OUT / BACK, seg7 HH:00, condition, temp, `雨 X%・風 Y km/h`, a blinking `!RAIN` only on a leg whose rainProb ≥ 40 — this is the screen's one infinite animation), hour selectors for 出門 / 回家 (native `<select>` 00–23 with visible labels, ≥ 44 px), headline, checklist (combined over both legs; each item shows which leg triggered it), staggered one-shot pop-in of checklist items.
+- Exercise (`js/ui/views/exercise.js`): hero LCD with selected TIME (seg7 HH:00, no ghosts) and SCORE (seg7), verdict + advice; score bars for every slot (tap target ≥ 44 px tall area; bar colour by level: good `--ink`, ok neutral, bad `--alert`; selected bar outlined; `明日` marker on tomorrow slots); a `最佳 HH:00` key; an `<input type="range">` (step 1 over slot indices) as secondary control with visible label; 6 metric cards for the selected hour. Selecting updates in place (no full re-render; the time/score digits play a one-shot flip). Default selection: best slot.
+- Both: use the same controller/view-model as Today (no extra network requests), states loading / stale / error handled like Today, live region announces scenario change and the selected exercise hour (debounced 500 ms), no horizontal overflow at 390 px, sticky bottom nav.
+
+### Testing (M3)
+- Unit: every checklist rule boundary (39/40, 0.49/0.5, feels 18/18.1, range 5.9/6, UV 6 inside vs outside 10–15, AQI 99/100, PM2.5 34.9/35), null handling, `legHours` today/tomorrow/out-of-horizon; scoring curves (clamping, interpolation, null renormalisation), slots with window extension after 22:00, bestSlot ties, advice branches; commute headline branches; `ps:outing` storage.
+- E2E: route + chip navigation and persistence; commute selectors change legs and checklist; rainy evening fixture → umbrella on + `!RAIN` on BACK; exercise default selects best, tapping a bar / slider / best key updates LCD and metrics; 22:30 clock shows tomorrow slots to 06:00; axe 0 serious/critical on both scenarios (day + night); no console errors; screenshots `docs/screenshots/m3/` (`commute-day.png`, `commute-rain.png`, `exercise-day.png`, `exercise-night.png`, `exercise-late.png`, `*-viewport.png` for both) gated by `E2E_SCREENSHOTS=1`.
