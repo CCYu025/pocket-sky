@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveTheme, nextPref, THEME_COLORS, readPref, writePref } from "../../js/ui/theme.js";
+import { readFileSync } from "node:fs";
+import nodeVm from "node:vm";
+import { resolveTheme, nextPref, THEME_COLORS, readPref, writePref, readLast, writeLast } from "../../js/ui/theme.js";
 
 const vm = (minuteKey) => ({
   now: { minuteKey, isDay: null },
@@ -73,4 +75,65 @@ test("storage failures never throw", () => {
   assert.doesNotThrow(() => writePref(bad, "day"));
   assert.equal(readPref(undefined), "auto");
   assert.doesNotThrow(() => writePref(undefined, "day"));
+});
+
+test("resolveTheme: fallback is used for auto only when vm is null", () => {
+  assert.equal(resolveTheme("auto", null, 0, "night"), "night");
+  assert.equal(resolveTheme("auto", undefined, 0, "night"), "night");
+  assert.equal(resolveTheme("auto", null, 0, "day"), "day");
+  assert.equal(resolveTheme("auto", null, 0), "day");
+  assert.equal(resolveTheme("auto", null, 0, "bogus"), "day");
+  assert.equal(resolveTheme("day", null, 0, "night"), "day", "explicit pref wins");
+  assert.equal(resolveTheme("auto", vm("2026-11-21T12:00"), 0, "night"), "day", "a view model wins over the fallback");
+});
+
+test("readLast/writeLast never throw and validate", () => {
+  const data = new Map();
+  const s = { getItem: (k) => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, v) };
+  assert.equal(readLast(s), undefined);
+  writeLast(s, "night");
+  assert.equal(data.get("ps:theme-last"), "night");
+  assert.equal(readLast(s), "night");
+  data.set("ps:theme-last", "purple");
+  assert.equal(readLast(s), undefined);
+  const bad = { getItem() { throw new Error("x"); }, setItem() { throw new Error("x"); } };
+  assert.equal(readLast(bad), undefined);
+  assert.doesNotThrow(() => writeLast(bad, "day"));
+  assert.equal(readLast(undefined), undefined);
+});
+
+// ---- js/theme-boot.js (classic script run before the stylesheets) ----
+const BOOT = readFileSync(new URL("../../js/theme-boot.js", import.meta.url), "utf8");
+function boot({ items = {}, throwing = false, meta = true } = {}) {
+  const metaEl = { content: "#FFF7D6", setAttribute(k, v) { if (k === "content") this.content = v; } };
+  const doc = {
+    documentElement: { dataset: {} },
+    querySelector: (sel) => (meta && sel === 'meta[name="theme-color"]' ? metaEl : null),
+  };
+  const win = {};
+  if (throwing) Object.defineProperty(win, "localStorage", { get() { throw new Error("SecurityError"); } });
+  else win.localStorage = { getItem: (k) => (k in items ? items[k] : null) };
+  nodeVm.runInNewContext(BOOT, { window: win, document: doc });
+  return { theme: doc.documentElement.dataset.theme, color: metaEl.content };
+}
+
+test("theme-boot: explicit pref wins over the last resolved theme", () => {
+  assert.deepEqual(boot({ items: { "ps:theme": "day", "ps:theme-last": "night" } }), { theme: "day", color: THEME_COLORS.day });
+  assert.deepEqual(boot({ items: { "ps:theme": "night" } }), { theme: "night", color: THEME_COLORS.night });
+});
+
+test("theme-boot: auto uses ps:theme-last (night before first paint) and the colors match THEME_COLORS", () => {
+  assert.deepEqual(boot({ items: { "ps:theme": "auto", "ps:theme-last": "night" } }), { theme: "night", color: THEME_COLORS.night });
+  assert.deepEqual(boot({ items: { "ps:theme-last": "night" } }), { theme: "night", color: THEME_COLORS.night });
+  assert.deepEqual(boot({ items: { "ps:theme-last": "day" } }), { theme: "day", color: THEME_COLORS.day });
+});
+
+test("theme-boot: nothing known leaves the default; garbage is ignored; never throws", () => {
+  assert.equal(boot({}).theme, undefined);
+  assert.equal(boot({ items: { "ps:theme": "purple", "ps:theme-last": "mauve" } }).theme, undefined);
+  assert.doesNotThrow(() => boot({ throwing: true }));
+  assert.equal(boot({ throwing: true }).theme, undefined);
+  assert.doesNotThrow(() => boot({ items: { "ps:theme-last": "night" }, meta: false }));
+  assert.equal(boot({ items: { "ps:theme-last": "night" }, meta: false }).theme, "night");
+  assert.doesNotThrow(() => nodeVm.runInNewContext(BOOT, {}), "no window/document at all");
 });

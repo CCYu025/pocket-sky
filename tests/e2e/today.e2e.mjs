@@ -2,7 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startServer } from "./server.mjs";
 import {
-  launch, openApp, waitReady, settle, shot, overflow,
+  launch, openApp, waitReady, settle, shot, overflow, trackTheme,
   dayForecast, nightForecast, rainyForecast, coldDropForecast, airFixture, DAY_MS, NIGHT_MS, NIGHT_UTC,
 } from "./helpers.mjs";
 import { toViewModel } from "../../js/domain/derive.js";
@@ -99,6 +99,58 @@ test("night: auto theme at 20:30 with countdown to sunrise", async () => {
   await noOverflow(app);
   await shot(page, "today-night");
   noErrors(app);
+});
+
+test("night: first paint is already night (boot script), also while loading and in the error state", async () => {
+  const seed = { "ps:theme-last": "night" };
+  // ready: never a day frame
+  const ready = await open({ forecast: nightForecast(), now: NIGHT_UTC, storage: seed });
+  await trackTheme(ready);
+  await ready.go();
+  await waitReady(ready.page);
+  assert.equal(await ready.page.evaluate(() => window.__bodyTheme), "night", "theme when <body> is created");
+  assert.deepEqual(await ready.page.evaluate(() => window.__themes), ["night"], "never flashed day");
+  assert.equal(await ready.page.evaluate(() => localStorage.getItem("ps:theme-last")), "night");
+  noErrors(ready);
+
+  // loading (no view model yet) keeps the last theme
+  const loading = await open({ now: NIGHT_UTC, storage: seed });
+  loading.mode.forecast = "hang";
+  await trackTheme(loading);
+  await loading.go();
+  await loading.page.locator(".hero").waitFor();
+  assert.equal(await loading.page.locator("main").getAttribute("aria-busy"), "true");
+  assert.equal(await theme(loading.page), "night");
+  assert.deepEqual(await loading.page.evaluate(() => window.__themes), ["night"]);
+  noErrors(loading);
+
+  // error state at night (auto theme, vm is null)
+  const err = await open({ now: NIGHT_UTC, storage: seed, expectedErrors: [/status of 500/] });
+  err.mode.forecast = "500";
+  await trackTheme(err);
+  await err.go();
+  await err.page.locator('[data-action="retry"]').waitFor();
+  assert.equal(await theme(err.page), "night");
+  assert.equal(await err.page.locator('meta[name="theme-color"]').getAttribute("content"), "#141414");
+  assert.deepEqual(await err.page.evaluate(() => window.__themes), ["night"]);
+  assert.deepEqual(err.errors, []);
+});
+
+test("theme boot: no stored theme stays day; explicit day beats the last resolved night", async () => {
+  const fresh = await open({});
+  await trackTheme(fresh);
+  await fresh.go();
+  await waitReady(fresh.page);
+  assert.equal(await theme(fresh.page), "day");
+  assert.notEqual(await fresh.page.evaluate(() => window.__bodyTheme), "night");
+
+  const explicit = await open({ storage: { "ps:theme": "day", "ps:theme-last": "night" } });
+  await trackTheme(explicit);
+  await explicit.go();
+  await waitReady(explicit.page);
+  assert.deepEqual(await explicit.page.evaluate(() => window.__themes), ["day"]);
+  noErrors(fresh);
+  noErrors(explicit);
 });
 
 test("LIGHT toggles the theme and persists across reload", async () => {
@@ -319,18 +371,49 @@ test("motion: colon blinks normally, reduced motion disables everything; hidden 
   noErrors(rm);
 });
 
-test("only transform/opacity are animated", async () => {
+test("only transform/opacity are animated or transitioned", async () => {
   const app = await open({ forecast: rainyForecast() });
+  const { page } = app;
   await app.go();
-  await waitReady(app.page);
-  const props = await app.page.evaluate(() => {
+  await waitReady(page);
+
+  /** Properties touched by every running animation AND transition (CSSAnimation keyframes, CSSTransition property). */
+  const touched = () => page.evaluate(() => {
     const set = new Set();
+    const skip = ["offset", "computedOffset", "easing", "composite"];
     for (const a of document.getAnimations()) {
-      if (a.constructor.name !== "CSSAnimation") continue;
-      for (const kf of a.effect.getKeyframes()) for (const k of Object.keys(kf)) set.add(k);
+      if (a.constructor.name === "CSSTransition") set.add(a.transitionProperty);
+      else for (const kf of a.effect.getKeyframes()) for (const k of Object.keys(kf)) if (!skip.includes(k)) set.add(k);
     }
-    return [...set].filter((k) => !["offset", "computedOffset", "easing", "composite"].includes(k)).sort();
+    return [...set].sort();
   });
-  assert.deepEqual(props, ["opacity", "transform"]);
-  await settle(app.page);
+  const allowed = new Set(["opacity", "transform"]);
+  const bad = (props) => props.filter((p) => !allowed.has(p));
+
+  assert.deepEqual(bad(await touched()), [], "running at load");
+
+  // Provoke transitions: switch theme (colors change) and press a key (transform).
+  await page.locator('[data-action="light"]').click();
+  assert.deepEqual(bad(await touched()), [], "right after the theme switch");
+  const box = await page.locator('[data-action="more"]').boundingBox();
+  await page.mouse.move(box.x + 10, box.y + 10);
+  await page.mouse.down();
+  assert.deepEqual(bad(await touched()), [], "while a key is pressed");
+  await page.mouse.up();
+
+  // Static check: no element declares a non-zero transition on anything but transform/opacity.
+  const declared = await page.evaluate(() => {
+    const out = new Set();
+    const secs = (t) => parseFloat(t) * (t.endsWith("ms") ? 0.001 : 1);
+    for (const el of document.querySelectorAll("html, body, body *")) {
+      const cs = getComputedStyle(el);
+      const props = cs.transitionProperty.split(",").map((x) => x.trim());
+      const durs = cs.transitionDuration.split(",").map((x) => secs(x.trim()));
+      props.forEach((p, i) => { if (durs[i % durs.length] > 0) out.add(p); });
+    }
+    return [...out].sort();
+  });
+  assert.deepEqual(bad(declared), [], `declared transitions: ${declared}`);
+  await settle(page);
+  noErrors(app);
 });

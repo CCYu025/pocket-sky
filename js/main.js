@@ -6,7 +6,7 @@ import { createCache } from "./cache.js";
 import { getForecast, getAirQuality, ATTRIBUTION } from "./api/openmeteo.js";
 import { createController } from "./app/controller.js";
 import { browserGeolocate } from "./app/geolocate.js";
-import { resolveTheme, nextPref, readPref, writePref, THEME_COLORS } from "./ui/theme.js";
+import { resolveTheme, nextPref, readPref, writePref, readLast, writeLast, THEME_COLORS } from "./ui/theme.js";
 import { renderToday } from "./ui/views/today.js";
 import { renderOuting } from "./ui/views/outing.js";
 
@@ -57,7 +57,9 @@ function currentRoute() {
  * @returns {'day'|'night'}
  */
 function applyTheme(state) {
-  const theme = resolveTheme(readPref(storage), state.vm, now());
+  const last = readLast(storage);
+  const theme = resolveTheme(readPref(storage), state.vm, now(), last);
+  if (theme !== last) writeLast(storage, theme);
   doc.documentElement.dataset.theme = theme;
   if (themeMeta) themeMeta.setAttribute("content", THEME_COLORS[theme]);
   lightBtn.setAttribute("aria-pressed", String(theme === "night"));

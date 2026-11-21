@@ -224,3 +224,22 @@ export async function runAxe(page) {
     targets: v.nodes.slice(0, 3).map((n) => n.target.join(" ")),
   }));
 }
+
+/**
+ * Record every `data-theme` value on <html> and the theme at the moment <body> is
+ * created (i.e. before any app code could render): `window.__themes`, `window.__bodyTheme`.
+ * Call before `go()`.
+ * @param {object} app Result of `openApp`.
+ */
+export async function trackTheme(app) {
+  await app.ctx.addInitScript(() => {
+    window.__themes = [];
+    window.__bodyTheme = "unset";
+    new MutationObserver(() => {
+      const t = document.documentElement?.dataset.theme ?? null;
+      if (t === null && !document.body) return; // <html> not themed yet and nothing painted
+      if (window.__themes.at(-1) !== t) window.__themes.push(t);
+      if (document.body && window.__bodyTheme === "unset") window.__bodyTheme = t;
+    }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-theme"] });
+  });
+}

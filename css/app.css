@@ -10,7 +10,6 @@ body {
   font-family: var(--font-zh);
   font-weight: 500;
   line-height: 1.4;
-  transition: background-color 0.3s, color 0.3s;
 }
 
 a { color: inherit; }
@@ -117,7 +116,6 @@ main:focus { outline: none; }
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: background-color 0.3s, box-shadow 0.3s;
 }
 .lcd-top { display: flex; justify-content: space-between; align-items: center; font-family: var(--font-mono); font-size: 14px; }
 .lcd-main { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
@@ -220,5 +218,5 @@ main:focus { outline: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .clock .seg7-colon, .anim .lcd, .anim .alert, .anim .bar { animation: none; }
-  body, .lcd, .nav, .key, .more { transition: none; }
+  .key, .more { transition: none; }
 }
