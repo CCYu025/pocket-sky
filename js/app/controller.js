@@ -29,6 +29,7 @@ export const GEO_TIMEOUT_MS = 10000;
  * @property {*} error Last error when `status === 'error'`.
  * @property {{lat:number, lon:number, name:string, source:'gps'|'default'|'place', id?:string}|null} location
  * @property {boolean} locating True while the device position is being resolved.
+ * @property {number} locationUpdates Counts late GPS fixes that were applied after the timeout (the announcer says `已更新為目前位置`).
  * @property {string} current Current place: `'gps'` (default) or a saved place id (`ps:current`).
  * @property {Object<string, PlaceEntry>} places Extra places (work, trip destination) keyed by their forecast
  *   cache key; filled lazily by `ensurePlace`. Their errors never touch the fields above.
@@ -81,7 +82,7 @@ export function createController({
   setTimer = (fn, ms) => globalThis.setTimeout(fn, ms), clearTimer = (id) => globalThis.clearTimeout(id),
 }) {
   /** @type {TodayState} */
-  const initial = { status: "loading", vm: null, alert: null, fetchedAt: null, notice: null, error: null, location: null, locating: false, current: "gps", places: {} };
+  const initial = { status: "loading", vm: null, alert: null, fetchedAt: null, notice: null, error: null, location: null, locating: false, locationUpdates: 0, current: "gps", places: {} };
   const store = createStore(initial);
 
   let gen = 0; // load generation: results of an older load are ignored
@@ -121,10 +122,17 @@ export function createController({
     if (raw.forecast && (status === "ready" || status === "stale")) rebuild(status);
   }
 
-  /** Device position, or a rejection with `err.timeout` when it takes longer than `GEO_TIMEOUT_MS`. */
-  function geolocateWithin() {
+  /**
+   * Device position, or a rejection with `err.timeout` when it takes longer than `GEO_TIMEOUT_MS`.
+   * @param {(p: {lat: number, lon: number}) => void} [onLate] Called with a fix that arrives after the timeout.
+   */
+  function geolocateWithin(onLate) {
     return new Promise((resolve, reject) => {
-      const id = setTimer(() => reject(Object.assign(new Error("geolocation timeout"), { timeout: true })), GEO_TIMEOUT_MS);
+      let timedOut = false;
+      const id = setTimer(() => {
+        timedOut = true;
+        reject(Object.assign(new Error("geolocation timeout"), { timeout: true }));
+      }, GEO_TIMEOUT_MS);
       const done = (fn) => (v) => {
         clearTimer(id);
         fn(v);
@@ -135,13 +143,29 @@ export function createController({
       } catch (err) {
         attempt = Promise.reject(err);
       }
-      attempt.then(done(resolve), done(reject));
+      attempt.then(
+        (v) => (timedOut ? onLate?.(v) : done(resolve)(v)),
+        done(reject),
+      );
     });
   }
 
-  async function resolveLocation() {
+  /**
+   * A fix that arrived after the timeout: applied only while the selection is still `gps` and no newer
+   * locate request (or place selection) started since. Clears the timeout notice, loads the position
+   * (the same 2-dp key as the one shown refetches nothing) and bumps `locationUpdates` (announced).
+   */
+  function applyLateFix(mine, p) {
+    if (mine !== locGen || store.get().current !== "gps") return;
+    if (!p || !Number.isFinite(p.lat) || !Number.isFinite(p.lon)) return;
+    lastGps = { lat: p.lat, lon: p.lon };
+    store.set({ notice: null, locating: false, locationUpdates: (store.get().locationUpdates ?? 0) + 1 });
+    void load({ lat: p.lat, lon: p.lon, name: GPS_NAME, source: "gps" });
+  }
+
+  async function resolveLocation(mine) {
     try {
-      const p = await geolocateWithin();
+      const p = await geolocateWithin((late) => applyLateFix(mine, late));
       lastGps = { lat: p.lat, lon: p.lon };
       return { location: { lat: p.lat, lon: p.lon, name: GPS_NAME, source: "gps" }, notice: null };
     } catch (err) {
@@ -160,7 +184,7 @@ export function createController({
   async function locate() {
     const mine = ++locGen;
     store.set({ locating: true });
-    const r = await resolveLocation();
+    const r = await resolveLocation(mine);
     if (mine !== locGen) return null;
     store.set({ notice: r.notice, locating: false });
     return r;

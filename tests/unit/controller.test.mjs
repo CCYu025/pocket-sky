@@ -458,11 +458,10 @@ function fakeTimers() {
   };
 }
 
-test("geolocation: no answer within GEO_TIMEOUT_MS (10 s) falls back to the default place; a late answer is ignored", async () => {
+test("geolocation: no answer within GEO_TIMEOUT_MS (10 s) falls back to the default place", async () => {
   assert.equal(GEO_TIMEOUT_MS, 10000);
   const timers = fakeTimers();
-  let release;
-  const ctx = setup({ geo: () => new Promise((r) => { release = r; }) });
+  const ctx = setup({ geo: () => new Promise(() => {}) });
   const c = await make(ctx, timers);
   const p = c.init();
   assert.equal(c.store.get().locating, true);
@@ -474,10 +473,90 @@ test("geolocation: no answer within GEO_TIMEOUT_MS (10 s) falls back to the defa
   assert.equal(s.status, "ready");
   assert.equal(s.location.source, "default");
   assert.equal(s.notice, DEFAULT_NOTICE);
-  release({ lat: 22, lon: 121 }); // too late
-  await new Promise((r) => setImmediate(r));
+});
+
+const tick = () => new Promise((r) => setImmediate(r));
+
+test("geolocation: a fix that arrives after the timeout is applied while the selection is still gps (notice cleared, announced via locationUpdates)", async () => {
+  const timers = fakeTimers();
+  let release;
+  const ctx = setup({ geo: () => new Promise((r) => { release = r; }) });
+  const c = await make(ctx, timers);
+  const p = c.init();
+  timers.fireAll();
+  await p;
   assert.equal(c.store.get().location.source, "default");
-  assert.ok(ctx.calls.every((u) => !/latitude=22\.00/.test(u)));
+  assert.equal(c.store.get().locationUpdates ?? 0, 0);
+  release({ lat: 22, lon: 121 }); // late
+  await tick();
+  await tick();
+  const s = c.store.get();
+  assert.equal(s.location.source, "gps");
+  assert.equal(s.location.lat, 22);
+  assert.equal(s.notice, null);
+  assert.equal(s.locationUpdates, 1);
+  assert.ok(ctx.calls.some((u) => /latitude=22\.00/.test(u)), "the forecast of the late fix is loaded");
+});
+
+test("geolocation: a late fix equal (2 dp) to the position already shown is applied quietly: notice cleared, announced, no second forecast load", async () => {
+  const timers = fakeTimers();
+  let n = 0;
+  let release;
+  const ctx = setup({ geo: () => (n++ === 0 ? Promise.resolve({ lat: 24.151, lon: 120.671 }) : new Promise((r) => { release = r; })) });
+  const c = await make(ctx, timers);
+  await c.init();
+  const p = c.selectCurrent("gps");
+  timers.fireAll();
+  await p;
+  assert.equal(c.store.get().notice, "定位逾時，使用上次位置");
+  const before = ctx.calls.length;
+  release({ lat: 24.1549, lon: 120.6704 });
+  await tick();
+  await tick();
+  const s = c.store.get();
+  assert.equal(s.notice, null);
+  assert.equal(s.status, "ready");
+  assert.equal(ctx.calls.length, before, "same 2-dp key: nothing refetched");
+  assert.equal(s.locationUpdates, 1);
+});
+
+test("geolocation: a late fix is ignored when the selection is no longer gps or a newer locate request started", async () => {
+  const PLACE = { id: "p:23.87,120.91", name: "日月潭", admin1: "南投縣", elevation: 748, lat: 23.87, lon: 120.91 };
+  // 1. the user picked a saved place meanwhile
+  {
+    const timers = fakeTimers();
+    let release;
+    const ctx = setup({ geo: () => new Promise((r) => { release = r; }) });
+    ctx.storage.setItem("ps:places", JSON.stringify({ v: 1, saved: [PLACE], workId: null, tripId: null }));
+    const c = await make(ctx, timers);
+    const p = c.init();
+    timers.fireAll();
+    await p;
+    await c.selectCurrent(PLACE.id);
+    release({ lat: 22, lon: 121 });
+    await tick();
+    await tick();
+    assert.equal(c.store.get().location.id, PLACE.id);
+    assert.ok(ctx.calls.every((u) => !/latitude=22\.00/.test(u)));
+  }
+  // 2. a newer locate request started (its own answer wins)
+  {
+    const timers = fakeTimers();
+    const releases = [];
+    const ctx = setup({ geo: () => new Promise((r) => releases.push(r)) });
+    const c = await make(ctx, timers);
+    const p = c.init();
+    timers.fireAll();
+    await p;
+    const q = c.selectCurrent("gps"); // newer request
+    releases[1]({ lat: 25, lon: 121.5 });
+    await q;
+    releases[0]({ lat: 22, lon: 121 }); // the first request answers last
+    await tick();
+    await tick();
+    assert.equal(c.store.get().location.lat, 25);
+    assert.ok(ctx.calls.every((u) => !/latitude=22\.00/.test(u)));
+  }
 });
 
 test("geolocation: a position that arrives in time clears the timer", async () => {

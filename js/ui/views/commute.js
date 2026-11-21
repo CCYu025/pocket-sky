@@ -10,6 +10,7 @@ import { commuteHeadline } from "../../domain/outing-summary.js";
 import { CHECKLIST_RULES, T } from "../../rules/config.js";
 import { intText } from "../format.js";
 import { entryOf } from "./places.js";
+import { cacheKey } from "../../cache.js";
 
 /**
  * Note under the legs: which place the BACK leg uses.
@@ -158,6 +159,20 @@ export function checklistHtml(items, key = "c-checklist") {
 }
 
 /**
+ * Whether the work place is a different place than the current one: their forecast cache keys (2-dp)
+ * differ, so a GPS fix at the work place's coordinates is one place. Without a current location
+ * (state before the first fix) the saved-place ids are compared.
+ * @param {{location?: ({lat: number, lon: number}|null), current?: string}} state
+ * @param {{id: string, lat: number, lon: number}} work
+ * @returns {boolean}
+ */
+export function differsFrom(state, work) {
+  const l = state?.location;
+  if (l && Number.isFinite(l.lat) && Number.isFinite(l.lon)) return cacheKey("forecast", l.lat, l.lon) !== cacheKey("forecast", work.lat, work.lon);
+  return work.id !== state?.current;
+}
+
+/**
  * Commute blocks (everything below the scenario chips).
  * @param {{status: string, vm: (object|null)}} state Controller state.
  * @param {{outing: {commute: {out: number, back: number}}, work?: (object|null)}} ui `ui.work`: the work
@@ -167,7 +182,7 @@ export function checklistHtml(items, key = "c-checklist") {
 export function commuteHtml(state, ui) {
   const { status, vm } = state;
   const c = ui.outing.commute;
-  const work = ui.work ? { place: ui.work, entry: entryOf(state, ui.work), differs: ui.work.id !== state.current } : null;
+  const work = ui.work ? { place: ui.work, entry: entryOf(state, ui.work), differs: differsFrom(state, ui.work) } : null;
   const model = vm && status !== "loading" && status !== "error" ? commuteModel(vm, c, work) : null;
   let title = "載入天氣中…";
   if (model) title = model.headline;

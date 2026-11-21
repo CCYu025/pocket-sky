@@ -518,16 +518,36 @@ test("trip: enabled chip, destination from fixtures — diff, name, elevation, s
   noErrors(app);
 });
 
-test("trip: the default window 09-16 is running at 14:20, so it starts today at 14:00 (two rows, no 明日)", async () => {
-  const app = await open({ storage: seed({ saved: [LAKE], tripId: LAKE.id }) });
+test("trip: a window running now with at least 3 hours left starts today at the current hour (09-17 at 14:20: 14, 15, 16; no note)", async () => {
+  const app = await open({ storage: seed({ saved: [LAKE], tripId: LAKE.id, extra: { "ps:outing": JSON.stringify({ scenario: "trip", trip: { start: 9, end: 17 } }) } }) });
+  const { page } = app;
+  await visit(app, "#outing/trip");
+  await page.locator(".strip").waitFor();
+  assert.equal(await page.locator("#sel-start").inputValue(), "9");
+  assert.equal(await page.locator("#sel-end").inputValue(), "17");
+  assert.deepEqual(await page.$$eval(".srow .st b", (els) => els.map((e) => e.textContent)), ["14", "15", "16"]);
+  assert.equal(await page.locator(".srow .st i").count(), 0);
+  assert.equal(await page.locator('[data-k="t-tail"]').count(), 0);
+  noErrors(app);
+});
+
+test("trip: the default window 09-16 at 15:20 has 1 hour left, so tomorrow's 09-16 is shown with the note above the strip", async () => {
+  const app = await open({ now: "2026-11-21T07:20:00Z", storage: seed({ saved: [LAKE], tripId: LAKE.id }) });
   const { page } = app;
   await visit(app, "#outing/trip");
   await page.locator(".strip").waitFor();
   assert.equal(await page.locator("#sel-start").inputValue(), "9");
   assert.equal(await page.locator("#sel-end").inputValue(), "16");
-  assert.deepEqual(await page.$$eval(".srow .st b", (els) => els.map((e) => e.textContent)), ["14", "15"]);
-  assert.equal(await page.locator(".srow .st i").count(), 0);
-  assert.equal(await page.locator(".srow.is-best").count(), 0, "two hours are too short for a best window");
+  assert.deepEqual(await page.$$eval(".srow .st b", (els) => els.map((e) => e.textContent)), ["09", "10", "11", "12", "13", "14", "15"]);
+  assert.equal(await page.locator(".srow .st i").count(), 7, "every row is 明日");
+  const note = page.locator('[data-k="t-tail"]');
+  assert.equal(norm(await note.innerText()), "今天行程只剩 1 小時，顯示明天");
+  const order = await page.evaluate(() => {
+    const n = document.querySelector('[data-k="t-tail"]');
+    const strip = document.querySelector(".strip");
+    return Boolean(n.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  assert.equal(order, true, "the note is above the strip");
   noErrors(app);
 });
 

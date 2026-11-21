@@ -4,7 +4,7 @@
  * @module ui/views/trip
  */
 import { seg7Svg, escapeHtml as esc } from "../seg7.js";
-import { tripSlots, bestWindow, tempDiff, tripChecklist, tripHeadline } from "../../rules/trip.js";
+import { tripPlan, isWet, bestWindow, tempDiff, tripChecklist, tripHeadline } from "../../rules/trip.js";
 import { T } from "../../rules/config.js";
 import { levelWord } from "./exercise.js";
 import { checklistHtml, valueText } from "./commute.js";
@@ -37,14 +37,15 @@ export function diffParts(diff) {
  * @param {{start: number, end: number}} trip Selected hours.
  * @param {number} nowMs Epoch ms.
  * @returns {{slots: object[], best: (object|null), items: object[], headline: string, diff: (number|null),
- *   name: string, elevation: (number|null), condition: string, wet: (object|null), rows: object[]}}
+ *   name: string, elevation: (number|null), condition: string, wet: (object|null), rows: object[], tail: (number|null)}}
  *   `items` are checklist items with `tags` (`13:00・降雨 60%`, `明日 ` prefix, `全程・溫差 7°` for a range
- *   trigger); `wet` is the first slot with rainProb >= 40 (the `!RAIN` warning); `rows[i]` is a strip row
+ *   trigger); `wet` is the first wet slot (`isWet`: rainProb >= 40 or rain >= 0.5 mm; the `!RAIN` warning);
+ *   `tail` is N when the running window has only N hours left today and tomorrow's is shown (`tripPlan`); `rows[i]` is a strip row
  *   `{ hourKey, hour, isTomorrow, comfort, level, temp, rain, wet, best, aria }` (`level` is the trip level: the
- *   exercise level capped by rain; `wet` is rainProb >= 40, marked in text and not by colour alone).
+ *   exercise level capped by rain; `wet` is `isWet`, marked in text and not by colour alone).
  */
 export function tripModel({ vm, place, originVm }, trip, nowMs) {
-  const slots = tripSlots(vm, trip.start, trip.end, nowMs);
+  const { slots, tail } = tripPlan(vm, trip.start, trip.end, nowMs);
   const best = bestWindow(slots);
   const today = String(vm?.now?.hourKey ?? "").slice(0, 10);
   const items = tripChecklist(slots, today).map((it) => {
@@ -58,14 +59,15 @@ export function tripModel({ vm, place, originVm }, trip, nowMs) {
     const inBest = Boolean(best) && i >= best.startIndex && i <= best.endIndex;
     const rain = num(s.rainProb);
     const t = `${s.isTomorrow ? "明日 " : ""}${pad2(s.hour)}:00`;
-    const isWet = rain !== null && rain >= T.rainProb;
-    const aria = `${t}，${intText(s.temp)}度，降雨 ${rain === null ? "無資料" : `${Math.round(rain)}%`}${isWet ? "，可能下雨" : ""}，${s.comfort === null ? "舒適度無資料" : `舒適度 ${s.comfort}，${levelWord(s.level)}`}${inBest ? "，最佳時段" : ""}`;
-    return { hourKey: s.hourKey, hour: s.hour, isTomorrow: s.isTomorrow, comfort: s.comfort, level: s.level, temp: s.temp, rain, wet: isWet, best: inBest, aria };
+    const wetHour = isWet(s);
+    const aria = `${t}，${intText(s.temp)}度，降雨 ${rain === null ? "無資料" : `${Math.round(rain)}%`}${wetHour ? "，可能下雨" : ""}，${s.comfort === null ? "舒適度無資料" : `舒適度 ${s.comfort}，${levelWord(s.level)}`}${inBest ? "，最佳時段" : ""}`;
+    return { hourKey: s.hourKey, hour: s.hour, isTomorrow: s.isTomorrow, comfort: s.comfort, level: s.level, temp: s.temp, rain, wet: wetHour, best: inBest, aria };
   });
-  const wet = slots.find((s) => num(s.rainProb) !== null && s.rainProb >= T.rainProb) ?? null;
+  const wet = slots.find(isWet) ?? null;
   const elev = num(vm?.location?.elevation) ?? num(place?.elevation);
   return {
     slots,
+    tail,
     best,
     items,
     headline: tripHeadline(slots, best, items),
@@ -130,9 +132,10 @@ function heroHtml(m, place) {
  * best window ringed; wet hours (rain >= 40%) carry a bold, underlined `雨70%` (text and shape, not colour alone).
  * The legend names all three levels, the ring and the wet marker.
  * @param {object[]} rows `tripModel().rows`.
+ * @param {number|null} [tail] `tripModel().tail`: shows the note `今天行程只剩 N 小時，顯示明天` above the strip.
  * @returns {string} HTML.
  */
-function stripHtml(rows) {
+function stripHtml(rows, tail = null) {
   const items = rows
     .map((r, i) => {
       const rainText = `雨${r.rain === null ? "--" : Math.round(r.rain)}%`;
@@ -140,8 +143,9 @@ function stripHtml(rows) {
     })
     .join("");
   const body = rows.length ? `<ol class="strip" aria-label="逐時舒適度">${items}</ol>` : `<p class="notice">這個時段沒有逐時資料</p>`;
-  const legend = `<p class="legend"><span class="lg"><i class="sw sw--good" aria-hidden="true"></i>適合</span><span class="lg"><i class="sw sw--ok" aria-hidden="true"></i>普通</span><span class="lg"><i class="sw sw--bad" aria-hidden="true"></i>不建議</span><span class="lg"><i class="sw sw--best" aria-hidden="true"></i>外框 = 最佳時段</span><span class="lg"><b class="wet">雨</b> = 降雨機率 ≥ ${T.rainProb}%</span></p>`;
-  return `<section class="card" data-k="t-strip" aria-label="逐時狀態"><div class="card-head"><span>逐時舒適度</span><span class="hint">長度 = 舒適度（雨天不超過「普通」）</span></div>${body}${legend}</section>`;
+  const legend = `<p class="legend"><span class="lg"><i class="sw sw--good" aria-hidden="true"></i>適合</span><span class="lg"><i class="sw sw--ok" aria-hidden="true"></i>普通</span><span class="lg"><i class="sw sw--bad" aria-hidden="true"></i>不建議</span><span class="lg"><i class="sw sw--best" aria-hidden="true"></i>外框 = 最佳時段</span><span class="lg"><b class="wet">雨</b> = 降雨機率 ≥ ${T.rainProb}% 或雨量 ≥ ${T.rain} mm</span></p>`;
+  const note = tail ? `<p class="note strip-note" data-k="t-tail">今天行程只剩 ${tail} 小時，顯示${rows[0]?.isTomorrow === false ? "稍後的時段" : "明天"}</p>` : "";
+  return `<section class="card" data-k="t-strip" aria-label="逐時狀態"><div class="card-head"><span>逐時舒適度</span><span class="hint">長度 = 舒適度（雨天不超過「普通」）</span></div>${note}${body}${legend}</section>`;
 }
 
 /**
@@ -181,6 +185,6 @@ export function tripHtml(state, ui) {
     `<div class="fields" data-k="t-fields">${selectHtml("start", "開始時間", t.start)}${selectHtml("end", "結束時間", t.end)}</div>`,
     `<h1 class="headline headline--sm" data-k="t-headline">${esc(title)}</h1>`,
   );
-  if (model) parts.push(stripHtml(model.rows), checklistHtml(model.items, "t-checklist"));
+  if (model) parts.push(stripHtml(model.rows, model.tail), checklistHtml(model.items, "t-checklist"));
   return parts.join("\n");
 }

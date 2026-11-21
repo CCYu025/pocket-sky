@@ -492,6 +492,20 @@ test("commuteHtml: a work place that is not the current place gets the 兩地 wo
   assert.match(commuteHtml({ ...state, current: WORK_PLACE.id }, ui({ work: WORK_PLACE })), /早晚溫差大，記得帶外套/);
 });
 
+test("commuteHtml: 'different places' compares forecast cache keys (2-dp) of the current location and the work place, not ids", () => {
+  const cur = vmOfHours(synth("2026-11-21", 6, 30, () => ({ temp: 19, feels: 19 })));
+  const work = vmOfHours(synth("2026-11-21", 6, 30, () => ({ temp: 26, feels: 26 })));
+  const key = "om:v1:forecast:24.80,120.97";
+  const base = { status: "ready", vm: cur, current: "gps", places: { [key]: workEntry(work) } };
+  // GPS fix at the work place's coordinates (jitter inside the same 2-dp cell): one place
+  const atWork = { ...base, location: { lat: 24.8049, lon: 120.9712, name: "目前位置", source: "gps" } };
+  assert.match(commuteHtml(atWork, ui({ work: WORK_PLACE })), /早晚溫差大，記得帶外套/);
+  assert.doesNotMatch(commuteHtml(atWork, ui({ work: WORK_PLACE })), /兩地溫差大/);
+  // GPS somewhere else: two places
+  const away = { ...base, location: { lat: 24.15, lon: 120.67, name: "目前位置", source: "gps" } };
+  assert.match(commuteHtml(away, ui({ work: WORK_PLACE })), /兩地溫差大，記得帶外套/);
+});
+
 test("commute checklist reasons say 通勤時段", () => {
   const m = commuteModel(vmOfHours(synth("2026-11-21", 6, 30)), COMMUTE);
   assert.equal(m.items.find((i) => i.id === "sunscreen").why, "通勤時段不在 10–15 時");

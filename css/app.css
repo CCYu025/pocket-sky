@@ -322,6 +322,7 @@ main:focus { outline: none; }
 .empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px 12px; }
 .empty-title { margin: 0; font-size: 20px; font-weight: 900; }
 .empty .note { font-size: 14px; }
+.strip-note { margin: 8px 0 0; }
 .strip { list-style: none; margin: 0; padding: 8px 8px 4px 2px; display: flex; flex-direction: column; gap: 12px; }
 .srow { display: flex; align-items: center; gap: 10px; min-height: 28px; }
 .st { width: 30px; flex: none; display: flex; flex-direction: column; align-items: center; font-family: var(--font-mono); font-size: 13px; }
@@ -351,7 +352,7 @@ main:focus { outline: none; }
 .pk-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .pk-head h2 { margin: 0; font-size: 22px; font-weight: 900; }
 .pk-close { width: 44px; padding: 0; font-size: 24px; font-weight: 900; }
-.pk-lead { margin: 0; font-size: 13px; color: var(--sub); }
+.pk-lead { margin: 0; white-space: pre-line; font-size: 13px; color: var(--sub); }
 .pk-search { display: flex; flex-direction: column; gap: 2px; }
 .pk-label { font-size: 13px; font-weight: 900; }
 .pk-input { width: 100%; min-height: 48px; padding: 0 12px; border: var(--border); border-radius: 0; background: var(--card); color: var(--ink); box-shadow: var(--sh); font-family: var(--font-zh); font-size: 16px; }

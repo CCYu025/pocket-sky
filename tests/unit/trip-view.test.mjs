@@ -17,7 +17,7 @@ const withObservation = (f, mutate) => {
 const origin = (mutate) => toViewModel({ forecast: withObservation(fx("forecast-taichung.json"), mutate), air: fx("air-taichung.json"), nowMs: NOW });
 const dest = (mutate) => toViewModel({ forecast: withObservation(fx("forecast-multi.json")[1], mutate), air: null, nowMs: NOW, hoursAhead: 36 }); // like the controller's extra places
 const LAKE = { id: "p:23.87,120.91", name: "日月潭", admin1: "南投縣", elevation: 748, lat: 23.87, lon: 120.91 };
-const TRIP = { start: 9, end: 16 }; // 14:20 is inside it: the window runs from 14:00 today
+const TRIP = { start: 9, end: 17 }; // 14:20 is inside it with 3 hours left: the window runs from 14:00 today
 const TOMORROW = { start: 9, end: 16 + 0 - 3 }; // 09-13: already over at 14:20, so tomorrow's
 const entry = (vm, status = "ready") => ({ status, vm, error: null, fetchedAt: NOW });
 const key = "om:v1:forecast:23.87,120.91";
@@ -49,10 +49,10 @@ test("tripModel: slots, best window, diff, headline and strip rows from the fixt
   assert.match(m.rows.find((r) => r.best).aria, /，最佳時段$/);
 });
 
-test("tripModel: a window that is running now starts today at the current hour (09-16 at 14:20: 14:00 and 15:00)", () => {
+test("tripModel: a window that is running now starts today at the current hour (09-17 at 14:20: 14:00 to 16:00)", () => {
   const m = tripModel({ vm: dest(), place: LAKE, originVm: origin() }, TRIP, NOW);
-  assert.deepEqual(m.rows.map((r) => [r.hour, r.isTomorrow]), [[14, false], [15, false]]);
-  assert.equal(m.best, null, "two hours are too short for a window");
+  assert.deepEqual(m.rows.map((r) => [r.hour, r.isTomorrow]), [[14, false], [15, false], [16, false]]);
+  assert.equal(m.tail, null);
 });
 
 test("tripModel: wet hours are bad and marked (probe: 70% rain used to score good); rows carry `wet` and the aria says so", () => {
@@ -106,10 +106,10 @@ test("tripHtml: hero with the diff, name, elevation and condition; selects; stri
   assert.match(html, /海拔 747 m/);
   assert.match(html, /<label class="field-k" for="sel-start">開始時間<\/label>/);
   assert.match(html, /<option value="9" selected>09:00<\/option>/);
-  assert.match(html, /<option value="16" selected>16:00<\/option>/);
+  assert.match(html, /<option value="17" selected>17:00<\/option>/);
   assert.equal((html.match(/<option /g) || []).length, 48);
   assert.match(html, /<ol class="strip" aria-label="逐時舒適度">/);
-  assert.equal((html.match(/class="srow/g) || []).length, 2, "14:00 and 15:00 (the window is running)");
+  assert.equal((html.match(/class="srow/g) || []).length, 3, "14:00 to 16:00 (the window is running)");
   assert.equal((html.match(/class="check-item/g) || []).length, 4);
   assert.match(html, /data-k="t-checklist"/);
   assert.match(html, /<h1 class="headline headline--sm" data-k="t-headline">/);
@@ -197,4 +197,23 @@ test("tripHtml: the checklist says 出遊時段 (sunscreen off reason)", () => {
   const html = tripHtml(readyState(), ui({ outing: { scenario: "trip", trip: { start: 18, end: 21 } } }));
   assert.match(html, /出遊時段不在 10–15 時/);
   assert.doesNotMatch(html, /通勤時段/);
+});
+
+test("tripHtml: a running window with fewer than 3 hours left shows tomorrow's and the note 今天行程只剩 N 小時，顯示明天 above the strip", () => {
+  const html = tripHtml(readyState(), ui({ outing: { scenario: "trip", trip: { start: 9, end: 16 } } })); // 14:20: 2 hours left
+  assert.match(html, /<p class="note strip-note" data-k="t-tail">今天行程只剩 2 小時，顯示明天<\/p>/);
+  assert.ok(html.indexOf("t-tail") < html.indexOf('class="strip"'), "above the strip");
+  assert.match(html, /<i>明日<\/i>/);
+  const m = tripModel({ vm: dest(), place: LAKE, originVm: origin() }, { start: 9, end: 16 }, NOW);
+  assert.equal(m.tail, 2);
+  assert.ok(m.rows.every((r) => r.isTomorrow));
+  assert.doesNotMatch(tripHtml(readyState(), ui()), /今天行程只剩/, "3 hours left: no note");
+});
+
+test("tripModel: an hour wet by rain amount only is marked wet, in the !RAIN slot and the headline", () => {
+  const wet = dest((f) => (f.hourly.precipitation[IDX + 1] = 1.2)); // 15:00
+  const m = tripModel({ vm: wet, place: LAKE, originVm: origin() }, TRIP, NOW);
+  assert.equal(m.rows.find((r) => r.hour === 15).wet, true);
+  assert.equal(m.wet.hour, 15);
+  assert.match(m.headline, /^15 時可能下雨/);
 });

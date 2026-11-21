@@ -8,6 +8,7 @@ import { ERROR_TEXT } from "./views/today.js";
 import { SCENARIO_NAMES } from "./route.js";
 
 export const STALE_TEXT = "資料已過期";
+export const LOCATION_UPDATED_TEXT = "已更新為目前位置";
 
 /**
  * Create an announcer.
@@ -17,6 +18,7 @@ export function createAnnouncer() {
   let alertId = null;
   let stale = false;
   let error = false;
+  let updates = 0;
   return {
     next(state) {
       const hasVm = Boolean(state?.vm);
@@ -27,6 +29,9 @@ export function createAnnouncer() {
       if (nowAlertId && nowAlertId !== alertId && !(alertId && state.alert.continuation)) msgs.push(state.alert.title);
       if (nowStale && !stale) msgs.push(STALE_TEXT);
       if (nowError && !error) msgs.push(ERROR_TEXT);
+      const nowUpdates = state?.locationUpdates ?? 0;
+      if (nowUpdates > updates) msgs.push(LOCATION_UPDATED_TEXT);
+      updates = nowUpdates;
       alertId = nowAlertId;
       stale = nowStale;
       error = nowError;

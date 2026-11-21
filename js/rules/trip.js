@@ -9,6 +9,8 @@ import { localParts, addHours } from "../time.js";
 
 /** Longest trip window in hours. */
 export const MAX_TRIP_HOURS = 12;
+/** Shortest useful window in hours (`bestWindow` default; a running window with fewer left shows the next one). */
+export const MIN_TRIP_HOURS = 3;
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const hh = (h) => String(h).padStart(2, "0");
@@ -49,30 +51,47 @@ export function daylightPhase(hour, sunrise, sunset) {
 }
 
 /**
- * Hourly slots of the destination between `startHour` and `endHour`.
+ * Whether an hour counts as wet: `rainProb >= T.rainProb` or `rain >= T.rain` (what the umbrella
+ * rule uses). Unknown values are not wet. Slots in a best window are never wet; the headline names the wet runs.
+ * @param {{rainProb?: (number|null), rain?: (number|null)}} s
+ * @returns {boolean}
+ */
+export function isWet(s) {
+  const p = num(s?.rainProb);
+  const r = num(s?.rain);
+  return (p !== null && p >= T.rainProb) || (r !== null && r >= T.rain);
+}
+
+/**
+ * Hourly slots of the destination between `startHour` and `endHour`, with the planning note.
  * The window is the next occurrence of `startHour`..`endHour` (end exclusive; it wraps past midnight
  * when `endHour <= startHour`; length capped at `MAX_TRIP_HOURS`). When now already lies inside the
- * window (start <= now < end, wrapping included) it starts **today at the current hour**; otherwise
- * today's `startHour` when that is still ahead (`startHour >=` the current local hour), else
- * tomorrow's. Hours missing from `vm.hours` are omitted.
+ * window (start <= now < end, wrapping included) it starts **today at the current hour**, unless fewer
+ * than `MIN_TRIP_HOURS` of it are left (and the window itself is at least that long): then the next
+ * occurrence is planned instead (`tail` is the hours left today). Otherwise today's `startHour` when
+ * that is still ahead (`startHour >=` the current local hour), else tomorrow's. Hours missing from
+ * `vm.hours` are omitted.
  * @param {object} vm Destination view model (`vm.today` / `vm.tomorrow` give sunrise and sunset).
  * @param {number} startHour 0-23
  * @param {number} endHour 0-23
  * @param {number} nowMs
- * @returns {object[]} Copies of the `vm.hours` entries (so slots can be fed to `evaluateChecklist`)
- *   plus `isTomorrow`, `comfort` (`scoreHour`), `level` (the trip level: exercise level capped by rain,
- *   see `tripLevel`) and `daylight` (`daylightPhase` with the slot day's sunrise/sunset: tomorrow's from
- *   `vm.tomorrow` when present, else today's as an approximation).
+ * @returns {{slots: object[], tail: (number|null)}} `slots`: copies of the `vm.hours` entries (so they can be fed to
+ *   `evaluateChecklist`) plus `isTomorrow`, `comfort` (`scoreHour`), `level` (the trip level, see `tripLevel`)
+ *   and `daylight` (`daylightPhase` with the slot day's sunrise/sunset: tomorrow's from `vm.tomorrow` when
+ *   present, else today's as an approximation). `tail`: hours of the running window left today when the
+ *   next occurrence is shown instead, else `null`.
  */
-export function tripSlots(vm, startHour, endHour, nowMs) {
+export function tripPlan(vm, startHour, endHour, nowMs) {
   const hours = vm?.hours;
-  if (!Array.isArray(hours) || hours.length === 0) return [];
-  if (!Number.isInteger(startHour) || !Number.isInteger(endHour)) return [];
+  if (!Array.isArray(hours) || hours.length === 0) return { slots: [], tail: null };
+  if (!Number.isInteger(startHour) || !Number.isInteger(endHour)) return { slots: [], tail: null };
   const { date, hour: nowHour } = localParts(vm.location?.utcOffsetSeconds ?? 0, nowMs);
   const len = Math.min(MAX_TRIP_HOURS, endHour > startHour ? endHour - startHour : endHour + 24 - startHour);
   const done = (nowHour - startHour + 24) % 24; // hours of the window that have already begun
-  const inside = done < len;
-  const first = inside ? `${date}T${hh(nowHour)}:00` : addHours(`${date}T${hh(startHour)}:00`, startHour >= nowHour ? 0 : 24);
+  const running = done < len;
+  const short = running && done > 0 && len - done < MIN_TRIP_HOURS && len >= MIN_TRIP_HOURS;
+  const inside = running && !short;
+  const first = inside ? `${date}T${hh(nowHour)}:00` : addHours(`${date}T${hh(startHour)}:00`, startHour > nowHour ? 0 : 24);
   const count = inside ? len - done : len;
   const tomorrow = addHours(`${date}T00:00`, 24).slice(0, 10);
   const sunOf = (d) => (d === tomorrow && vm.tomorrow?.sunrise && vm.tomorrow?.sunset ? vm.tomorrow : vm.today ?? {});
@@ -86,7 +105,12 @@ export function tripSlots(vm, startHour, endHour, nowMs) {
     const sun = sunOf(key.slice(0, 10));
     slots.push({ ...h, isTomorrow: key.slice(0, 10) !== date, comfort, level: tripLevel(levelOf(comfort), h.rainProb), daylight: daylightPhase(h.hour, sun.sunrise, sun.sunset) });
   }
-  return slots;
+  return { slots, tail: short ? len - done : null };
+}
+
+/** The slots of `tripPlan`. */
+export function tripSlots(vm, startHour, endHour, nowMs) {
+  return tripPlan(vm, startHour, endHour, nowMs).slots;
 }
 
 /** Best contiguous run of `ok` slots, at least `minLen` long: highest mean comfort, ties earliest start then longer run. */
@@ -109,8 +133,8 @@ function bestRun(list, ok, minLen) {
 }
 
 /**
- * Best contiguous window. Candidate runs contain only **dry** (`rainProb < 40`; an unknown probability
- * is not wet) slots with a known comfort. Daylight first: a run of at least `minLen` slots that are all
+ * Best contiguous window. Candidate runs contain only **dry** (not `isWet`: `rainProb < 40` and `rain < 0.5` mm; unknown
+ * values are not wet) slots with a known comfort. Daylight first: a run of at least `minLen` slots that are all
  * daylight (`daylight` `day`, or unknown) with the highest mean comfort. If none exists, the best dry
  * run of any time of day (`night` says why it is not daylight: `after` sunset or `before` sunrise, from
  * the run's first non-daylight slot). No dry run of `minLen` at all: `null` (no recommendation).
@@ -121,9 +145,9 @@ function bestRun(list, ok, minLen) {
  *   start: object, end: object, night: ('after'|'before'|null) }|null} `endIndex` is inclusive;
  *   `night` is `null` for a daylight window.
  */
-export function bestWindow(slots, minLen = 3) {
+export function bestWindow(slots, minLen = MIN_TRIP_HOURS) {
   const list = Array.isArray(slots) ? slots : [];
-  const dry = (s) => num(s.comfort) !== null && !(num(s.rainProb) !== null && s.rainProb >= T.rainProb);
+  const dry = (s) => num(s.comfort) !== null && !isWet(s);
   const lit = (s) => s.daylight !== "before" && s.daylight !== "after";
   let night = null;
   let best = bestRun(list, (s) => dry(s) && lit(s), minLen);
@@ -172,24 +196,55 @@ export function tripChecklist(slots, today = null) {
 }
 
 /**
- * `15–19 時` span of the wet slots (first to last wet hour, end exclusive); a tomorrow start is
- * prefixed `明天`, an end that falls on tomorrow while the start is today too (`22–明天02 時`).
- * @param {object[]} wet Wet slots in time order.
+ * Label of one wet run: `15–19 時` (first to last wet hour, end exclusive) or `09 時` for a single hour;
+ * a tomorrow start is prefixed `明天`, an end that falls on tomorrow while the start is today too (`22–明天02 時`).
+ * @param {object[]} run Consecutive wet slots in time order.
  * @returns {string}
  */
-function wetSpan(wet) {
-  const f = wet[0];
-  const l = wet[wet.length - 1];
+function runLabel(run) {
+  const f = run[0];
+  const l = run[run.length - 1];
+  const pre = f.isTomorrow ? "明天" : "";
+  if (run.length === 1) return `${pre}${hh(f.hour)} 時`;
   const endTomorrow = (l.isTomorrow || l.hour === 23) && !f.isTomorrow;
-  return `${f.isTomorrow ? "明天" : ""}${hh(f.hour)}–${endTomorrow ? "明天" : ""}${hh((l.hour + 1) % 24)} 時`;
+  return `${pre}${hh(f.hour)}–${endTomorrow ? "明天" : ""}${hh((l.hour + 1) % 24)} 時`;
+}
+
+/**
+ * Wet runs of the slots: maximal sequences of consecutive hours that are wet (`isWet`).
+ * @param {object[]} slots
+ * @returns {object[][]}
+ */
+function wetRuns(slots) {
+  const runs = [];
+  let cur = null;
+  let prev = null;
+  for (const s of slots) {
+    if (!isWet(s)) {
+      cur = null;
+    } else if (cur && prev && (prev.hour + 1) % 24 === s.hour) {
+      cur.push(s);
+    } else {
+      cur = [s];
+      runs.push(cur);
+    }
+    prev = s;
+  }
+  return runs;
+}
+
+/** `09 時、15 時` for up to two runs, `多個時段` for three or more. */
+function wetText(runs) {
+  return runs.length > 2 ? "多個時段" : runs.map(runLabel).join("、");
 }
 
 const NIGHT_NOTE = { after: "（已日落）", before: "（日出前）" };
 
 /**
- * One-line trip headline. Priority: no slots `資料不足`; rain (slots with rainProb >= 40, else the
- * umbrella item's hour when it triggered by rain amount) names the wet span, `15–19 時可能下雨，建議
- * {range} 遊玩` (`15–19 時可能下雨` without a best window); AQI mask `空氣品質差，記得戴口罩`; jacket
+ * One-line trip headline. Priority: no slots `資料不足`; rain (wet slots: `isWet`; else the umbrella
+ * item's hour) names the wet RUNS, never a span over dry gaps: one run `15–19 時可能下雨，建議
+ * {range} 遊玩` (`15–19 時可能下雨` without a best window; a single hour is `09 時`), two runs
+ * `09 時、15 時可能下雨`, three or more `多個時段可能下雨`; AQI mask `空氣品質差，記得戴口罩`; jacket
  * `氣溫偏低，記得帶外套` / `早晚溫差大，記得帶外套`; PM2.5 mask; sunscreen `紫外線強，記得防曬`;
  * else `{range} 最適合遊玩`, or `天氣穩定，適合出遊` without a best window. A best window that is not
  * daylight (`night`) reads `{range} 較適合（已日落）` / `（日出前）` (in the rain headline
@@ -204,11 +259,11 @@ export function tripHeadline(slots, best, items = []) {
   if (!Array.isArray(slots) || slots.length === 0) return "資料不足";
   const on = (id) => items.find((i) => i.id === id && i.on);
   const umbrella = on("umbrella");
-  let wet = slots.filter((s) => num(s.rainProb) !== null && s.rainProb >= T.rainProb);
-  if (wet.length === 0 && umbrella?.hourKey) wet = slots.filter((s) => s.hourKey === umbrella.hourKey);
+  let runs = wetRuns(slots);
+  if (runs.length === 0 && umbrella?.hourKey) runs = slots.filter((s) => s.hourKey === umbrella.hourKey).map((s) => [s]);
   const range = best ? windowRange(best) : null;
   const note = best?.night ? NIGHT_NOTE[best.night] ?? "" : "";
-  if (wet.length) return range ? `${wetSpan(wet)}可能下雨，建議 ${range} 遊玩${note}` : `${wetSpan(wet)}可能下雨`;
+  if (runs.length) return range ? `${wetText(runs)}可能下雨，建議 ${range} 遊玩${note}` : `${wetText(runs)}可能下雨`;
   if (items.some((i) => i.id === "mask" && i.on && i.field === "aqi")) return "空氣品質差，記得戴口罩";
   const jacket = on("jacket");
   if (jacket) return jacket.field === "temp" ? "早晚溫差大，記得帶外套" : "氣溫偏低，記得帶外套";
