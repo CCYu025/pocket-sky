@@ -161,6 +161,17 @@ test('geocoding: Chinese and English search (informational counts)', async (t) =
   assert.ok(await fj(buildGeocodingUrl('台中')).then(() => true), 'raw geocoding request succeeds');
 });
 
+test('geocoding: 臺中市 (zh) returns results; bare 臺中 is informational (documents the 台->臺 fallback)', async (t) => {
+  // Probed 2026-11-21: the geocoder matches whole names. 臺中市 -> 1 hit, while 臺中, 台中 and 台中市 -> 0.
+  // Taiwanese places are inconsistent (台北市 hits, 臺北市 does not), so the UI must try both 臺 and 台 spellings.
+  const opts = { fetchImpl: (u, o) => fetchWithRetry(u, o), language: 'zh', timeoutMs: 20000 };
+  const full = await withRetry(() => searchPlaces('臺中市', opts));
+  const bare = await withRetry(() => searchPlaces('臺中', opts));
+  t.diagnostic(`臺中市: ${full.length} results, 臺中: ${bare.length} results`);
+  assert.ok(full.length >= 1, '臺中市 should return at least one place');
+  assert.ok(full.some((p) => /^(臺灣|台灣|台湾|Taiwan)$/.test(p.country)), 'a Taiwan result is expected');
+});
+
 test('error path: invalid parameter -> HTTP 400 with reason and ApiError', async () => {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=24.16&longitude=120.64&hourly=not_a_field`;
   const res = await fetchWithRetry(url);
