@@ -69,26 +69,23 @@ const checklist = (page) =>
 
 // ---------------------------------------------------------------- routing
 
-test("routes: #outing opens the last scenario; chips are links, 出遊 is disabled; persisted in ps:outing", async () => {
+test("routes: #outing opens the last scenario; chips are links (incl. 出遊); persisted in ps:outing", async () => {
   const app = await open();
   const { page } = app;
   await visit(app, "#outing");
   // default: commute
   assert.equal(await page.locator(".chips").getAttribute("aria-label"), "情境");
-  assert.deepEqual(await page.$$eval(".chips a", (a) => a.map((x) => [x.getAttribute("href"), x.textContent])), [["#outing/commute", "通勤"], ["#outing/exercise", "運動"]]);
+  assert.deepEqual(await page.$$eval(".chips a", (a) => a.map((x) => [x.getAttribute("href"), x.textContent])), [["#outing/commute", "通勤"], ["#outing/exercise", "運動"], ["#outing/trip", "出遊"]]);
   assert.equal(await page.locator(".chip--commute").getAttribute("aria-current"), "page");
   assert.equal(await page.locator(".chip--exercise").getAttribute("aria-current"), null);
   assert.equal(await page.locator("#nav-outing").getAttribute("aria-current"), "page");
   await page.locator(".lcd--legs").waitFor();
 
   const trip = page.locator(".chip--trip");
-  assert.equal(await trip.evaluate((el) => el.tagName), "SPAN", "non-interactive element");
-  assert.equal(await trip.getAttribute("aria-disabled"), "true");
-  assert.equal(await trip.getAttribute("href"), null);
-  assert.equal(await trip.getAttribute("tabindex"), null);
-  assert.equal(norm(await trip.innerText()), "出遊 v2");
-  await trip.click({ force: true }); // aria-disabled: Playwright's actionability check would wait forever
-  assert.equal(await page.evaluate(() => location.hash), "#outing");
+  assert.equal(await trip.evaluate((el) => el.tagName), "A", "出遊 is a real link since M4");
+  assert.equal(await trip.getAttribute("href"), "#outing/trip");
+  assert.equal(await trip.getAttribute("aria-disabled"), null);
+  assert.equal(norm(await trip.innerText()), "出遊");
 
   await page.locator(".chip--exercise").click();
   assert.equal(await page.evaluate(() => location.hash), "#outing/exercise");
@@ -96,7 +93,7 @@ test("routes: #outing opens the last scenario; chips are links, 出遊 is disabl
   assert.equal(await page.locator(".chip--exercise").getAttribute("aria-current"), "page");
   assert.equal(await page.locator(".chip--commute").getAttribute("aria-current"), null);
   assert.equal(await page.locator("#nav-outing").getAttribute("aria-current"), "page", "外出 stays current for every scenario");
-  assert.deepEqual(await stored(page), { scenario: "exercise", commute: { out: 8, back: 18 } });
+  assert.deepEqual(await stored(page), { scenario: "exercise", commute: { out: 8, back: 18 }, trip: { start: 9, end: 16 } });
 
   // bottom key 外出 reopens the last scenario
   await page.locator("#nav-today").click();
@@ -139,7 +136,7 @@ test("routes: #outing opens the last scenario; chips are links, 出遊 is disabl
 });
 
 test("invalid ps:outing falls back to the defaults", async () => {
-  const app = await open({ storage: { "ps:outing": '{"scenario":"trip","commute":{"out":99,"back":"x"}}' } });
+  const app = await open({ storage: { "ps:outing": '{"scenario":"v2","commute":{"out":99,"back":"x"}}' } });
   await visit(app, "#outing");
   assert.equal(await app.page.locator("#sel-out").inputValue(), "8");
   assert.equal(await app.page.locator("#sel-back").inputValue(), "18");
@@ -158,7 +155,8 @@ test("commute: rainy evening drives !RAIN on BACK, umbrella + jacket, leg attrib
 
   assert.equal(await page.locator("h1").innerText(), "傍晚回家會遇到雨");
   assert.equal(model.headline, "傍晚回家會遇到雨");
-  assert.equal(norm(await page.locator(".note").innerText()), "出門與回家使用目前位置（M4 可設定公司地點）");
+  assert.equal(norm(await page.locator(".work .note").innerText()), "出門與回家都使用目前位置；設定公司地點後，回家改看公司所在地");
+  assert.equal(norm(await page.locator(".work .key").innerText()), "設定公司地點");
   assert.equal(await page.locator('[data-k="leg-out"] [role="img"]').first().getAttribute("aria-label"), "明日 出門 08:00");
   assert.equal(await page.locator('[data-k="leg-back"] .leg-time [role="img"]').getAttribute("aria-label"), "回家 18:00");
   assert.equal(norm(await page.locator('[data-k="leg-out"] .leg-top').innerText()), "OUT 明日");
@@ -250,7 +248,7 @@ test("commute: selectors change the legs and the checklist; persisted; in place"
   assert.equal((await checklist(page))[0].on, false);
   assert.equal(await page.evaluate(() => document.activeElement.id), "sel-back", "focus stays on the select");
   assert.equal(await page.evaluate(() => window.__hero === document.querySelector(".hero") && window.__list === document.querySelector(".checklist")), true, "reconciled in place");
-  assert.deepEqual(await stored(page), { scenario: "commute", commute: { out: 8, back: 21 } });
+  assert.deepEqual(await stored(page), { scenario: "commute", commute: { out: 8, back: 21 }, trip: { start: 9, end: 16 } });
 
   await page.selectOption("#sel-back", "18");
   await page.selectOption("#sel-out", "12"); // tomorrow noon: warm
@@ -591,7 +589,7 @@ test("loading, stale and error states", async () => {
   assert.equal(await loading.page.locator('[data-k="leg-out"] .leg-time [role="img"]').getAttribute("aria-label"), "出門 無資料");
   assert.equal(await loading.page.locator(".warn").count(), 0);
   assert.deepEqual((await checklist(loading.page)).map((i) => i.why), ["載入中", "載入中", "載入中", "載入中"]);
-  assert.equal(await loading.page.locator(".chips a").count(), 2);
+  assert.equal(await loading.page.locator(".chips a").count(), 3);
   assert.equal(await loading.page.locator("select").count(), 2);
   await noOverflow(loading.page, "commute loading");
   await loading.page.goto(`${server.url}#outing/exercise`);
@@ -622,7 +620,7 @@ test("loading, stale and error states", async () => {
   await err.go("#outing/commute");
   const retry = err.page.locator('[data-action="retry"]');
   await retry.waitFor();
-  assert.equal(await err.page.locator(".chips a").count(), 2, "chips stay available");
+  assert.equal(await err.page.locator(".chips a").count(), 3, "chips stay available");
   assert.equal(await err.page.locator("h1").innerText(), "資料暫時無法取得");
   assert.equal(await err.page.locator(".checklist").count(), 0);
   await noOverflow(err.page, "commute error");

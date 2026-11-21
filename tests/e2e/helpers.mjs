@@ -11,6 +11,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(HERE, "../..");
 export const SHOTS = path.join(ROOT, "docs/screenshots/m2");
 export const SHOTS_M3 = path.join(ROOT, "docs/screenshots/m3");
+export const SHOTS_M4 = path.join(ROOT, "docs/screenshots/m4");
 
 /**
  * Load Playwright: project dependency first, then the preinstalled tools dir.
@@ -131,6 +132,63 @@ export function rainyEveningForecast() {
 }
 
 /**
+ * Forecast for the Sun Moon Lake destination: element 1 of `forecast-multi.json`, with an observation at
+ * 14:15 taken from the 14:00 hour (like `dayForecast`), so it is not stale at the 14:20 clock.
+ * @param {(f: object) => void} [mutate] Optional in-place tweak.
+ * @returns {object}
+ */
+export function destForecast(mutate) {
+  const f = readJson("forecast-multi.json")[1];
+  const h = f.hourly;
+  f.current = {
+    ...f.current,
+    time: "2026-11-21T14:15",
+    temperature_2m: h.temperature_2m[IDX_14],
+    apparent_temperature: h.apparent_temperature[IDX_14],
+    relative_humidity_2m: h.relative_humidity_2m[IDX_14],
+    weather_code: h.weather_code[IDX_14],
+    wind_speed_10m: h.wind_speed_10m[IDX_14],
+    wind_direction_10m: 45,
+    is_day: 1,
+  };
+  if (mutate) mutate(f);
+  return f;
+}
+
+/**
+ * Synthetic work-place forecast built from the Taichung fixture: clearly different temperatures
+ * (26-27 degrees at 18:00-19:00) and rain 60% at 18:00-19:00, so the BACK leg and the checklist
+ * visibly come from this place and not from the current one.
+ * @returns {object}
+ */
+export function workForecast() {
+  return dayForecast((f) => {
+    const h = f.hourly;
+    [42, 43].forEach((i, k) => {
+      h.precipitation_probability[i] = 60;
+      h.precipitation[i] = 0.8;
+      h.weather_code[i] = 61;
+      h.temperature_2m[i] = [27, 26][k];
+      h.apparent_temperature[i] = [29, 28][k];
+      h.wind_speed_10m[i] = 11;
+    });
+  });
+}
+
+/** Saved places used by the M4 tests (ids are the 2-dp `p:lat,lon`). */
+export const LAKE = { id: "p:23.87,120.91", name: "日月潭", admin1: "南投縣", country: "臺灣", lat: 23.87, lon: 120.91, elevation: 748, timezone: "Asia/Taipei" };
+export const WORK = { id: "p:24.80,120.97", name: "新竹", admin1: "新竹縣", country: "臺灣", lat: 24.8, lon: 120.97, elevation: 31, timezone: "Asia/Taipei" };
+
+/**
+ * `forecastBy` for the M4 tests: Sun Moon Lake, the synthetic work place, anything else Taichung.
+ * @param {{lake?: object, work?: object}} [o] Overrides.
+ * @returns {(lat: number, lon: number) => object}
+ */
+export function placesForecasts({ lake = destForecast(), work = workForecast() } = {}) {
+  return (lat) => (Math.abs(lat - LAKE.lat) < 0.005 ? lake : Math.abs(lat - WORK.lat) < 0.005 ? work : undefined);
+}
+
+/**
  * Launch Chromium.
  * @returns {Promise<object>} Browser.
  */
@@ -148,12 +206,16 @@ const json = (body, status = 200) => ({ status, contentType: "application/json",
  * @param {object} [o]
  * @param {object} [o.forecast] Forecast body (default dayForecast()).
  * @param {object} [o.air] Air body.
+ * @param {(lat: number, lon: number) => (object|undefined)} [o.forecastBy] Per-place forecast body (`undefined` = `o.forecast`).
+ * @param {(name: string) => object[]} [o.geocode] Geocoding results (Open-Meteo `results` entries) per query name.
  * @param {string} [o.now] ISO instant for the fixed clock.
  * @param {boolean} [o.granted] Grant geolocation (24.15, 120.67).
  * @param {'reduce'|'no-preference'} [o.reducedMotion]
  * @param {object} [o.storage] localStorage seed (written before the first load).
  * @param {RegExp[]} [o.expectedErrors] Console error texts that are expected in this scenario.
- * @returns {Promise<{ctx, page, requests: string[], errors: string[], mode: {forecast: string, air: string}, go: Function, close: Function}>}
+ * @returns {Promise<{ctx, page, requests: string[], geoRequests: string[], failPlaces: Set<string>, errors: string[], mode: {forecast: string, air: string, geo: string}, go: Function, close: Function}>}
+ *   `geoRequests` are the geocoding `name` parameters in order; `failPlaces` holds `"lat,lon"` (2 dp) strings whose
+ *   forecast/air requests answer 500.
  */
 export async function openApp(browser, baseUrl, o = {}) {
   const ctx = await browser.newContext({
@@ -174,17 +236,36 @@ export async function openApp(browser, baseUrl, o = {}) {
   page.on("pageerror", (e) => record(`pageerror: ${e.message}`));
 
   const requests = [];
-  const mode = { forecast: "ok", air: "ok" };
+  const geoRequests = [];
+  const failPlaces = new Set();
+  const mode = { forecast: "ok", air: "ok", geo: "ok" };
   const bodies = { forecast: o.forecast ?? dayForecast(), air: o.air ?? airFixture() };
   const handler = (kind) => async (route) => {
-    requests.push(route.request().url());
+    const url = route.request().url();
+    requests.push(url);
     const m = mode[kind];
     if (m === "hang") return; // never resolves
     if (m === "500") return route.fulfill(json({ error: true, reason: "boom" }, 500));
+    const q = new URL(url).searchParams;
+    const lat = Number(q.get("latitude"));
+    const id = `${q.get("latitude")},${q.get("longitude")}`;
+    if (failPlaces.has(id)) return route.fulfill(json({ error: true, reason: "boom" }, 500));
+    if (kind === "forecast" && o.forecastBy) {
+      const by = o.forecastBy(lat, Number(q.get("longitude")));
+      if (by) return route.fulfill(json(by));
+    }
     return route.fulfill(json(bodies[kind]));
   };
   await ctx.route("**/api.open-meteo.com/**", handler("forecast"));
   await ctx.route("**/air-quality-api.open-meteo.com/**", handler("air"));
+  await ctx.route("**/geocoding-api.open-meteo.com/**", async (route) => {
+    const name = new URL(route.request().url()).searchParams.get("name");
+    geoRequests.push(name);
+    if (mode.geo === "hang") return;
+    if (mode.geo === "500") return route.fulfill(json({ error: true, reason: "boom" }, 500));
+    const results = (o.geocode ? o.geocode(name) : []).map((r, i) => ({ id: i + 1, country_code: "TW", ...r }));
+    return route.fulfill(json(results.length ? { results } : { generationtime_ms: 0.5 }));
+  });
   const realFonts = process.env.E2E_REAL_FONTS === "1";
   for (const pat of ["**/fonts.googleapis.com/**", "**/fonts.gstatic.com/**"]) {
     await ctx.route(pat, (route) =>
@@ -202,7 +283,7 @@ export async function openApp(browser, baseUrl, o = {}) {
   const go = async (hash = "") => {
     await page.goto(baseUrl + hash);
   };
-  return { ctx, page, requests, errors, mode, go, close: () => ctx.close() };
+  return { ctx, page, requests, geoRequests, failPlaces, errors, mode, go, close: () => ctx.close() };
 }
 
 /**
