@@ -29,33 +29,40 @@ async function ensureSwAssets() {
 
 /**
  * Start the server.
- * @param {{overrides?: Record<string, string>, root?: string}} [o] `root` is the directory served (default: the repo root; the site test serves `_site/`). `overrides` maps a URL path (`/sw-assets.js`) to a body served instead of the file; mutable while running.
- * @returns {Promise<{url: string, close: () => Promise<void>}>}
+ * @param {{overrides?: Record<string, string>, root?: string, prefix?: string, cacheControl?: string}} [o] `root` is the directory served (default: the repo root; the site test serves `_site/`).
+ *   `overrides` maps a path relative to the site (`/sw-assets.js`) to a body served instead of the file; mutable while running.
+ *   `prefix` serves the site under a sub-path (`/pocket-sky`, like GitHub Pages); everything outside it is a 404.
+ *   `cacheControl` is the response header (default `no-store`; the deploy tests use `max-age=600` like Pages).
+ * @returns {Promise<{url: string, close: () => Promise<void>}>} `url` ends with `/` and includes the prefix.
  */
-export async function startServer({ overrides = {}, root = ROOT } = {}) {
+export async function startServer({ overrides = {}, root = ROOT, prefix = "", cacheControl = "no-store" } = {}) {
   if (root === ROOT) await ensureSwAssets();
   const server = http.createServer(async (req, res) => {
     try {
       let rel = decodeURIComponent(new URL(req.url, "http://x").pathname);
+      if (prefix) {
+        if (rel !== prefix && !rel.startsWith(`${prefix}/`)) throw new Error("outside the prefix");
+        rel = rel.slice(prefix.length) || "/";
+      }
       if (rel.endsWith("/")) rel += "index.html";
       if (Object.hasOwn(overrides, rel)) {
-        res.writeHead(200, { "content-type": TYPES[path.extname(rel)] ?? "application/octet-stream", "cache-control": "no-store" });
+        res.writeHead(200, { "content-type": TYPES[path.extname(rel)] ?? "application/octet-stream", "cache-control": cacheControl });
         return res.end(overrides[rel]);
       }
       const file = path.join(root, rel);
       if (!file.startsWith(root + path.sep) || rel.startsWith("/node_modules/.")) throw new Error("outside");
       if (!(await stat(file)).isFile()) throw new Error("not a file");
-      res.writeHead(200, { "content-type": TYPES[path.extname(file)] ?? "application/octet-stream", "cache-control": "no-store" });
+      res.writeHead(200, { "content-type": TYPES[path.extname(file)] ?? "application/octet-stream", "cache-control": cacheControl });
       res.end(await readFile(file));
     } catch {
-      res.writeHead(404, { "content-type": "text/plain" });
+      res.writeHead(404, { "content-type": "text/plain", "cache-control": cacheControl });
       res.end("not found");
     }
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
   return {
-    url: `http://127.0.0.1:${port}/`,
+    url: `http://127.0.0.1:${port}${prefix}/`,
     close: () => new Promise((resolve) => server.close(() => resolve())),
   };
 }

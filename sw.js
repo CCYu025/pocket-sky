@@ -4,7 +4,6 @@ importScripts("./sw-assets.js");
 const SHELL = `ps-shell-${self.SW_VERSION}`;
 const FONTS = "ps-fonts-v1";
 const FONT_MAX = 30;
-const NAV_TIMEOUT_MS = 3000;
 const FONT_HOSTS = new Set(["fonts.googleapis.com", "fonts.gstatic.com"]);
 
 self.addEventListener("install", (event) => {
@@ -30,22 +29,27 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.hostname.endsWith("open-meteo.com")) return; // the app's localStorage SWR owns API caching
-  if (FONT_HOSTS.has(url.hostname)) return void event.respondWith(fonts(req));
+  if (FONT_HOSTS.has(url.hostname)) return void event.respondWith(fonts(req, event));
   if (url.origin !== self.location.origin) return;
   if (req.mode === "navigate") return void event.respondWith(navigation(req));
   event.respondWith(shellAsset(req));
 });
 
-/** Network-first with a 3 s timeout, falling back to the cached index.html. */
+/**
+ * App-shell model: the scope root (`./`, `./index.html`, any query) is served cache-first from the CURRENT shell
+ * cache, so the HTML always belongs to the same SW_VERSION as the cached CSS/JS (and its CSP). New HTML arrives
+ * only through the update flow (waiting worker -> banner -> SKIP_WAITING). Without a cached copy (nothing
+ * precached yet) the request goes to the network. Every other navigation in scope is the network's business:
+ * its answer (a 404, say) passes through and a network failure stays a failure; nothing is rewritten to the app.
+ */
 async function navigation(req) {
-  const cache = await caches.open(SHELL);
-  const fallback = () => cache.match("index.html").then((r) => r || Response.error());
-  try {
-    const res = await Promise.race([fetch(req), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), NAV_TIMEOUT_MS))]);
-    return res.ok ? res : (await fallback()) || res;
-  } catch {
-    return fallback();
+  const url = new URL(req.url);
+  const root = new URL(self.registration.scope);
+  if (url.pathname === root.pathname || url.pathname === `${root.pathname}index.html`) {
+    const hit = await (await caches.open(SHELL)).match("index.html");
+    if (hit) return hit;
   }
+  return fetch(req);
 }
 
 /** Cache-first from the current shell cache; misses go to the network. */
@@ -55,7 +59,7 @@ async function shellAsset(req) {
 }
 
 /** Stale-while-revalidate in the fonts cache, capped at FONT_MAX entries (oldest evicted). */
-async function fonts(req) {
+async function fonts(req, event) {
   const cache = await caches.open(FONTS);
   const hit = await cache.match(req);
   const refresh = fetch(req)
@@ -68,6 +72,9 @@ async function fonts(req) {
       return res;
     })
     .catch(() => undefined);
-  if (hit) return hit;
+  if (hit) {
+    event.waitUntil(refresh); // keep the worker alive until the background refresh has been stored
+    return hit;
+  }
   return (await refresh) || Response.error();
 }

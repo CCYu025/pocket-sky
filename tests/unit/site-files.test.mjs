@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { collect, ROOT } from "../../scripts/gen-sw-assets.mjs";
 import { siteFiles } from "../../scripts/site-files.mjs";
-import { buildSite } from "../../scripts/build-site.mjs";
+import { buildSite, stampSw } from "../../scripts/build-site.mjs";
 
 const norm = (p) => path.posix.normalize(p.replace(/^\.\//, "").split(/[?#]/)[0]);
 
@@ -52,5 +52,36 @@ test("buildSite writes exactly the listed files (and a fresh sw-assets.js)", () 
     assert.match(readFileSync(path.join(out, "sw-assets.js"), "utf8"), /SW_VERSION = "[0-9a-f]{12}"/);
   } finally {
     rmSync(out, { recursive: true, force: true });
+  }
+});
+
+test("buildSite stamps `// SW_VERSION <hash>` as the first line of _site/sw.js; the repo sw.js stays generic", () => {
+  const out = mkdtempSync(path.join(tmpdir(), "ps-site-"));
+  try {
+    buildSite(out);
+    const built = readFileSync(path.join(out, "sw.js"), "utf8");
+    const src = readFileSync(path.join(ROOT, "sw.js"), "utf8");
+    const { version } = collect();
+    assert.equal(built.split("\n")[0], `// SW_VERSION ${version}`);
+    assert.equal(built, `// SW_VERSION ${version}\n${src}`, "only the stamp differs");
+    assert.doesNotMatch(src, /SW_VERSION [0-9a-f]{12}/, "repo sw.js has no stamp");
+    assert.equal(stampSw("x\n", "abc"), "// SW_VERSION abc\nx\n");
+    assert.equal(stampSw("// SW_VERSION old\nx\n", "abc"), "// SW_VERSION abc\nx\n", "re-stamping replaces");
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+});
+
+test("a content change anywhere in the shell changes the built sw.js bytes", () => {
+  const a = mkdtempSync(path.join(tmpdir(), "ps-a-"));
+  const b = mkdtempSync(path.join(tmpdir(), "ps-b-"));
+  try {
+    buildSite(a);
+    buildSite(b);
+    assert.equal(readFileSync(path.join(a, "sw.js"), "utf8"), readFileSync(path.join(b, "sw.js"), "utf8"), "deterministic");
+    assert.notEqual(stampSw("x", "1"), stampSw("x", "2"));
+  } finally {
+    rmSync(a, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true });
   }
 });

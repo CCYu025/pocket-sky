@@ -49,5 +49,6 @@ test("asset list: sorted, every runtime js file, shell files, no tests/docs/sw",
 
 test("sw.js wires the spec'd behaviour", () => {
   const src = readFileSync(path.join(ROOT, "sw.js"), "utf8");
-  for (const s of ['importScripts("./sw-assets.js")', "ps-shell-", "ps-fonts-v1", "SKIP_WAITING", "open-meteo.com", "3000"]) assert.ok(src.includes(s), s);
+  for (const s of ['importScripts("./sw-assets.js")', "ps-shell-", "ps-fonts-v1", "SKIP_WAITING", "open-meteo.com", "event.waitUntil(refresh)"]) assert.ok(src.includes(s), s);
+  assert.ok(!/setTimeout|3000|Promise\.race/.test(src), "navigations are cache-first from the shell cache: no network timeout race");
 });

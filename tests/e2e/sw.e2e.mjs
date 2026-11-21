@@ -58,7 +58,7 @@ test("installs, precaches the shell and controls the page after reload", async (
   }
 });
 
-test("offline reload renders the shell and cached Today data; navigation fallback works", async () => {
+test("offline reload renders the shell and cached Today data from the shell cache", async () => {
   const app = await open();
   try {
     await install(app); // primes the app's localStorage cache with the fixture forecast
@@ -66,14 +66,12 @@ test("offline reload renders the shell and cached Today data; navigation fallbac
     await app.ctx.setOffline(true);
     const before = app.requests.length;
     await app.page.reload();
-    await waitReady(app.page);
+    await waitReady(app.page); // the app really renders, not just a document
     assert.equal(await app.page.locator(".hero").innerText(), online);
-    assert.equal(app.requests.length, before, "no API request while cached data is fresh");
-    // a navigation to an unknown same-origin path falls back to the cached index.html
-    await app.page.goto(`${server.url}some/deep/link/`);
-    assert.equal(await app.page.title(), "Pocket Sky");
     assert.ok(await app.page.locator("#nav-outing").count());
-    assert.deepEqual(app.errors.filter((e) => !/ERR_INTERNET_DISCONNECTED|Failed to load resource/.test(e)), []);
+    assert.equal(app.requests.length, before, "no API request while cached data is fresh");
+    assert.deepEqual(app.errors, [], "no console errors or failed resources while offline");
+    // the offline fallback is the scope root only (deploy.e2e.mjs covers nested paths and the 404 pass-through)
   } finally {
     await app.close();
   }

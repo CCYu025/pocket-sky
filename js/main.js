@@ -336,4 +336,8 @@ setInterval(() => {
 doc.documentElement.classList.toggle("is-hidden", doc.hidden);
 render();
 controller.init();
+// The update banner (sw-register.js) announces itself through the persistent live region.
+window.addEventListener("ps:announce", (e) => {
+  if (typeof e.detail === "string") live.textContent = e.detail;
+});
 registerSW(); // offline shell + update banner (no-op under ?nosw, __PS_NO_SW__ or without service worker support)
