@@ -4,8 +4,10 @@
  *
  * Cache integration is duck-typed (`deps.cache.get/set`) and this module does
  * NOT import `../cache.js`. Keys use the exact format of `cacheKey` from the
- * contract: `om:v1:{api}:{lat.toFixed(2)},{lon.toFixed(2)}`; multiple
- * locations are joined with `|`. Default TTLs equal the contract's `TTL`.
+ * contract: `om:v1:{api}:{lat.toFixed(2)},{lon.toFixed(2)}` (with `-0.00`
+ * normalised to `0.00`); multiple locations are joined with `|`. Default TTLs
+ * equal the contract's `TTL`. Coordinates are rounded to 2 dp (~1 km) before
+ * they leave the device (URLs) and in cache keys.
  * @module api/openmeteo
  */
 
@@ -19,6 +21,9 @@ const DEFAULT_TTL = Object.freeze({
   air: 30 * 60 * 1000,
   geocoding: 30 * 24 * 60 * 60 * 1000,
 });
+
+/** Default age (ms) beyond which a stale cache entry is not shown without a network result. */
+const DEFAULT_MAX_STALE_MS = 24 * 60 * 60 * 1000;
 
 /** Forecast query parameters (single source of truth). */
 export const FORECAST_PARAMS = Object.freeze({
@@ -70,6 +75,17 @@ function addParams(sp, params) {
 }
 
 /**
+ * Round a coordinate to 2 dp (~1 km) for privacy; `-0.00` becomes `0.00`.
+ * @param {number} n
+ * @returns {string}
+ */
+function fmtCoord(n) {
+  const s = Number(n).toFixed(2);
+  return s === '-0.00' ? '0.00' : s;
+}
+
+/**
+ * Build latitude/longitude params with coordinates rounded to 2 dp.
  * @param {Array<{lat:number, lon:number}>} locations
  * @returns {URLSearchParams}
  */
@@ -78,8 +94,8 @@ function locationParams(locations) {
     throw new TypeError('locations must be a non-empty array of { lat, lon }');
   }
   const sp = new URLSearchParams();
-  sp.set('latitude', locations.map((l) => l.lat).join(','));
-  sp.set('longitude', locations.map((l) => l.lon).join(','));
+  sp.set('latitude', locations.map((l) => fmtCoord(l.lat)).join(','));
+  sp.set('longitude', locations.map((l) => fmtCoord(l.lon)).join(','));
   return sp;
 }
 
@@ -166,49 +182,114 @@ export async function fetchJson(url, { fetchImpl = globalThis.fetch, timeoutMs =
  * @returns {string}
  */
 function locKey(api, locations) {
-  return `om:v1:${api}:${locations.map((l) => `${Number(l.lat).toFixed(2)},${Number(l.lon).toFixed(2)}`).join('|')}`;
+  return `om:v1:${api}:${locations.map((l) => `${fmtCoord(l.lat)},${fmtCoord(l.lon)}`).join('|')}`;
+}
+
+/** In-flight loads by cache key, shared by concurrent callers. */
+const inflight = new Map();
+/** Per-key count of writes made through this module (ordering guard). */
+const sequences = new Map();
+
+/**
+ * INTERNAL, for tests only: forget in-flight loads (and, unless
+ * `keepSequences` is true, write sequence numbers) so tests are isolated.
+ * @param {{ keepSequences?: boolean }} [opts]
+ * @returns {void}
+ */
+export function __resetInflight({ keepSequences = false } = {}) {
+  inflight.clear();
+  if (!keepSequences) sequences.clear();
 }
 
 /**
- * Stale-while-revalidate wrapper around a loader.
+ * Run (or join) the single in-flight load for `key`. The result is written to
+ * the cache only if no newer write landed for the key since the load started.
+ * @param {string} key
+ * @param {number} ttlMs
+ * @param {() => Promise<any>} load
+ * @param {{ set(key:string, value:any, ttlMs:number): void }} cache
+ * @returns {Promise<{ value: any, applied: boolean }>}
+ */
+function sharedLoad(key, ttlMs, load, cache) {
+  const existing = inflight.get(key);
+  if (existing) return existing;
+  const startSeq = sequences.get(key) ?? 0;
+  const p = (async () => {
+    try {
+      const value = await load();
+      if ((sequences.get(key) ?? 0) !== startSeq) return { value, applied: false };
+      cache.set(key, value, ttlMs);
+      sequences.set(key, startSeq + 1);
+      return { value, applied: true };
+    } finally {
+      if (inflight.get(key) === p) inflight.delete(key);
+    }
+  })();
+  inflight.set(key, p);
+  return p;
+}
+
+/**
+ * Call a handler, swallowing anything it throws.
+ * @param {Function|undefined} fn
+ * @param {...any} args
+ */
+function safeCall(fn, ...args) {
+  try {
+    if (fn) fn(...args);
+  } catch { /* ignore errors thrown by handlers */ }
+}
+
+/**
+ * Stale-while-revalidate wrapper around a loader. See `ApiDeps`.
  * @param {{ key: string, ttlMs: number, load: () => Promise<any>, deps: object }} p
  * @returns {Promise<any>}
  */
 async function swr({ key, ttlMs, load, deps }) {
   const { cache, onUpdate, onError } = deps;
   if (!cache) return load();
+  const maxStaleMs = deps.maxStaleMs ?? DEFAULT_MAX_STALE_MS;
+  const now = deps.now ?? Date.now;
   const hit = cache.get(key);
+  if (hit && !hit.fresh && now() - hit.savedAt > maxStaleMs) {
+    // Too old to show as-is: await the network, degrade to the old value if offline.
+    try {
+      return (await sharedLoad(key, ttlMs, load, cache)).value;
+    } catch (err) {
+      safeCall(onError, err);
+      return hit.value;
+    }
+  }
   if (hit) {
     if (!hit.fresh) {
       // Background refresh: never throws, never rejects.
-      (async () => {
-        try {
-          const fresh = await load();
-          cache.set(key, fresh, ttlMs);
-          if (onUpdate) onUpdate(fresh);
-        } catch (err) {
+      sharedLoad(key, ttlMs, load, cache).then(
+        ({ value, applied }) => {
+          if (!applied) return;
           try {
-            if (onError) onError(err);
-          } catch { /* ignore errors thrown by the handler */ }
-        }
-      })();
+            if (onUpdate) onUpdate(value, { key });
+          } catch (error) {
+            safeCall(onError, { phase: 'onUpdate', error });
+          }
+        },
+        (err) => safeCall(onError, err),
+      );
     }
     return hit.value;
   }
-  const value = await load();
-  cache.set(key, value, ttlMs);
-  return value;
+  return (await sharedLoad(key, ttlMs, load, cache)).value;
 }
 
 /**
  * @typedef {object} ApiDeps
  * @property {typeof fetch} [fetchImpl] Fetch implementation (default global fetch).
  * @property {{ get(key:string): ({value:any, savedAt:number, fresh:boolean}|null), set(key:string, value:any, ttlMs:number): void }} [cache] Optional cache.
- * @property {() => number} [now] Clock (reserved; the cache owns time).
+ * @property {() => number} [now] Clock used for the `maxStaleMs` check (default `Date.now`); the cache owns freshness.
+ * @property {number} [maxStaleMs] Stale entries (not fresh) older than this (default 24 h) are treated as a miss: the network is awaited; if it fails the old value is returned and `onError(err)` is called; with no cached value the error is thrown.
  * @property {number} [ttlMs] Override TTL for this call.
  * @property {number} [timeoutMs] Request timeout.
- * @property {(fresh:any) => void} [onUpdate] Called with refreshed data after a stale cache hit.
- * @property {(err:Error) => void} [onError] Called when a background refresh fails.
+ * @property {(fresh:any, meta:{key:string}) => void} [onUpdate] Called with refreshed data after a stale cache hit (only if no newer write for the key landed meanwhile).
+ * @property {(err:(Error|{phase:'onUpdate', error:*})) => void} [onError] Called with the Error when a background refresh fails or when falling back to an over-age cached value; called with `{ phase: 'onUpdate', error }` when `onUpdate` itself throws (the cache already holds the fresh value).
  */
 
 /**
@@ -254,7 +335,7 @@ export function getAirQuality(locations, deps = {}) {
  * Cache key: `om:v1:geocoding:{language}:{count}:{lowercased name}`.
  * @param {string} name
  * @param {ApiDeps & { count?: number, language?: string }} [deps]
- * @returns {Promise<Array<{name:string, admin1:(string|undefined), country:(string|undefined), lat:number, lon:number, elevation:(number|undefined), timezone:(string|undefined)}>>}
+ * @returns {Promise<Array<{name:(string|null), admin1:(string|null), country:(string|null), lat:(number|null), lon:(number|null), elevation:(number|null), timezone:(string|null)}>>}
  */
 export function searchPlaces(name, deps = {}) {
   const opts = { count: deps.count ?? 5, language: deps.language ?? 'zh' };
@@ -265,13 +346,13 @@ export function searchPlaces(name, deps = {}) {
     load: async () => {
       const body = await fetchJson(url, { fetchImpl: deps.fetchImpl, timeoutMs: deps.timeoutMs });
       return (body?.results ?? []).map((r) => ({
-        name: r.name,
-        admin1: r.admin1,
-        country: r.country,
-        lat: r.latitude,
-        lon: r.longitude,
-        elevation: r.elevation,
-        timezone: r.timezone,
+        name: r.name ?? null,
+        admin1: r.admin1 ?? null,
+        country: r.country ?? null,
+        lat: r.latitude ?? null,
+        lon: r.longitude ?? null,
+        elevation: r.elevation ?? null,
+        timezone: r.timezone ?? null,
       }));
     },
     deps,

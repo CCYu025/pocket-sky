@@ -1,10 +1,11 @@
-import { test } from 'node:test';
+import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   FORECAST_PARAMS, AIR_PARAMS, ATTRIBUTION, ApiError, fetchJson,
   buildForecastUrl, buildAirQualityUrl, buildGeocodingUrl,
-  getForecast, getAirQuality, searchPlaces,
+  getForecast, getAirQuality, searchPlaces, __resetInflight,
 } from '../../js/api/openmeteo.js';
+import { cacheKey, TTL } from '../../js/cache.js';
 
 const A = { lat: 24.16, lon: 120.64 };
 const B = { lat: 23.86, lon: 120.91 };
@@ -32,6 +33,8 @@ function fakeCache(entries = {}) {
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+beforeEach(() => __resetInflight());
 
 test('ATTRIBUTION constant', () => {
   assert.deepEqual({ ...ATTRIBUTION }, { text: 'Weather data by Open-Meteo.com', href: 'https://open-meteo.com/' });
@@ -188,7 +191,7 @@ test('SWR: stale hit returns cached then onUpdate with fresh data', async () => 
   const cache = fakeCache({ 'om:v1:forecast:24.16,120.64': { value: [{ cached: true }], savedAt: 0, fresh: false } });
   const f = fakeFetch({ fresh: true });
   const updates = [];
-  const out = await getForecast([A], { fetchImpl: f, cache, onUpdate: (v) => updates.push(v) });
+  const out = await getForecast([A], { fetchImpl: f, cache, now: () => 1000, onUpdate: (v) => updates.push(v) });
   assert.deepEqual(out, [{ cached: true }]);
   await tick();
   assert.equal(f.calls.length, 1);
@@ -206,6 +209,7 @@ test('SWR: background error goes to onError and does not throw', async () => {
     const out = await getForecast([A], {
       fetchImpl: fakeFetch({ error: true, reason: 'down' }, { status: 500 }),
       cache,
+      now: () => 1000,
       onError: (e) => errors.push(e),
     });
     assert.deepEqual(out, [{ cached: true }]);
@@ -221,7 +225,7 @@ test('SWR: background error goes to onError and does not throw', async () => {
 
 test('SWR: background error without onError is swallowed', async () => {
   const cache = fakeCache({ 'om:v1:forecast:24.16,120.64': { value: [1], savedAt: 0, fresh: false } });
-  const out = await getForecast([A], { fetchImpl: async () => { throw new Error('x'); }, cache });
+  const out = await getForecast([A], { fetchImpl: async () => { throw new Error('x'); }, cache, now: () => 1000 });
   assert.deepEqual(out, [1]);
   await tick();
 });
@@ -238,4 +242,220 @@ test('searchPlaces uses cache key with language/count/name', async () => {
   await searchPlaces(' Taichung ', { fetchImpl: fakeFetch({ results: [] }), cache });
   assert.equal(cache.sets[0].k, 'om:v1:geocoding:zh:5:taichung');
   assert.equal(cache.sets[0].ttlMs, 30 * 24 * 60 * 60 * 1000);
+});
+
+// ---------------------------------------------------------------- SWR dedupe / ordering
+
+const KEY_A = 'om:v1:forecast:24.16,120.64';
+
+/** Cache whose entry stays stale (fresh:false, savedAt 1000) after every set. */
+function staleCache(value) {
+  const store = new Map([[KEY_A, { value, savedAt: 1000, fresh: false }]]);
+  const sets = [];
+  return {
+    get: (k) => store.get(k) ?? null,
+    set: (k, v, ttlMs) => { sets.push({ k, value: v, ttlMs }); store.set(k, { value: v, savedAt: 1000, fresh: false }); },
+    sets,
+    store,
+  };
+}
+
+/** Fetch whose responses are released manually, in call order. */
+function gatedFetch() {
+  const calls = [];
+  const impl = (url) => new Promise((resolve) => {
+    calls.push({ url, release: (body) => resolve({ ok: true, status: 200, json: async () => body }) });
+  });
+  impl.calls = calls;
+  return impl;
+}
+
+test('SWR dedupe: two concurrent stale calls share one fetch; onUpdate gets the fresh value and { key }', async () => {
+  const cache = staleCache([{ v: 'old' }]);
+  const f = gatedFetch();
+  const u1 = [];
+  const u2 = [];
+  const r1 = await getForecast([A], { fetchImpl: f, cache, now: () => 2000, onUpdate: (v, meta) => u1.push([v, meta]) });
+  const r2 = await getForecast([A], { fetchImpl: f, cache, now: () => 2000, onUpdate: (v, meta) => u2.push([v, meta]) });
+  assert.deepEqual(r1, [{ v: 'old' }]);
+  assert.deepEqual(r2, [{ v: 'old' }]);
+  await tick();
+  assert.equal(f.calls.length, 1, 'exactly one network request');
+  f.calls[0].release({ v: 'new' });
+  await tick();
+  assert.equal(f.calls.length, 1);
+  assert.deepEqual(u1, [[[{ v: 'new' }], { key: KEY_A }]]);
+  assert.deepEqual(u2, [[[{ v: 'new' }], { key: KEY_A }]]);
+  assert.equal(cache.sets.length, 1);
+  assert.deepEqual(cache.store.get(KEY_A).value, [{ v: 'new' }]);
+});
+
+test('SWR dedupe: in-flight entry is removed afterwards so a later stale call refetches', async () => {
+  const cache = staleCache([1]);
+  const f = fakeFetch({ n: 1 });
+  await getForecast([A], { fetchImpl: f, cache, now: () => 2000 });
+  await tick();
+  await getForecast([A], { fetchImpl: f, cache, now: () => 2000 });
+  await tick();
+  assert.equal(f.calls.length, 2);
+});
+
+test('SWR dedupe: concurrent misses share one fetch and the same value', async () => {
+  const cache = fakeCache();
+  const f = gatedFetch();
+  const p1 = getForecast([A], { fetchImpl: f, cache });
+  const p2 = getForecast([A], { fetchImpl: f, cache });
+  await tick();
+  assert.equal(f.calls.length, 1);
+  f.calls[0].release({ elevation: 7 });
+  const [v1, v2] = await Promise.all([p1, p2]);
+  assert.deepEqual(v1, [{ elevation: 7 }]);
+  assert.equal(v1, v2, 'same value instance');
+  assert.equal(cache.sets.length, 1);
+});
+
+test('SWR dedupe: a failed shared load is removed from in-flight and reaches every caller', async () => {
+  const cache = fakeCache();
+  const bad = async () => { throw new Error('offline'); };
+  const results = await Promise.allSettled([
+    getForecast([A], { fetchImpl: bad, cache }),
+    getForecast([A], { fetchImpl: bad, cache }),
+  ]);
+  assert.deepEqual(results.map((r) => r.status), ['rejected', 'rejected']);
+  const f = fakeFetch({ ok: 1 });
+  assert.deepEqual(await getForecast([A], { fetchImpl: f, cache }), [{ ok: 1 }]);
+});
+
+test('SWR ordering: slow older load that finishes after a newer write is discarded', async () => {
+  const cache = staleCache([{ v: 'cached' }]);
+  const slow = gatedFetch();
+  const fast = gatedFetch();
+  const updates = [];
+  const onUpdate = (v) => updates.push(v);
+  await getForecast([A], { fetchImpl: slow, cache, now: () => 2000, onUpdate });
+  await tick();
+  // Simulate a second, independent load for the same key (e.g. another tab's module instance).
+  __resetInflight({ keepSequences: true });
+  await getForecast([A], { fetchImpl: fast, cache, now: () => 2000, onUpdate });
+  await tick();
+  fast.calls[0].release({ v: 'newer' });
+  await tick();
+  assert.deepEqual(cache.store.get(KEY_A).value, [{ v: 'newer' }]);
+  slow.calls[0].release({ v: 'older' });
+  await tick();
+  assert.deepEqual(cache.store.get(KEY_A).value, [{ v: 'newer' }], 'older result must not overwrite');
+  assert.equal(cache.sets.length, 1);
+  assert.deepEqual(updates, [[{ v: 'newer' }]], 'older result must not reach onUpdate');
+});
+
+test('SWR onUpdate throwing: reported as phase "onUpdate", not a refresh failure; cache keeps fresh value', async () => {
+  const cache = staleCache([{ v: 'old' }]);
+  const errors = [];
+  const boom = new Error('ui broke');
+  await getForecast([A], {
+    fetchImpl: fakeFetch({ v: 'new' }), cache, now: () => 2000,
+    onUpdate: () => { throw boom; },
+    onError: (e) => errors.push(e),
+  });
+  await tick();
+  assert.equal(errors.length, 1);
+  assert.deepEqual(errors[0], { phase: 'onUpdate', error: boom });
+  assert.deepEqual(cache.store.get(KEY_A).value, [{ v: 'new' }]);
+});
+
+// ---------------------------------------------------------------- maxStaleMs
+
+const DAY = 24 * 60 * 60 * 1000;
+
+test('maxStaleMs: entry older than the limit is a miss and the network result is awaited', async () => {
+  const cache = fakeCache({ [KEY_A]: { value: [{ v: 'ancient' }], savedAt: 0, fresh: false } });
+  const f = fakeFetch({ v: 'new' });
+  const out = await getForecast([A], { fetchImpl: f, cache, now: () => DAY + 1 });
+  assert.deepEqual(out, [{ v: 'new' }]);
+  assert.equal(f.calls.length, 1);
+});
+
+test('maxStaleMs: entry within the limit is still served stale-while-revalidate', async () => {
+  const cache = fakeCache({ [KEY_A]: { value: [{ v: 'ok' }], savedAt: 0, fresh: false } });
+  const out = await getForecast([A], { fetchImpl: fakeFetch({ v: 'new' }), cache, now: () => DAY });
+  assert.deepEqual(out, [{ v: 'ok' }]);
+});
+
+test('maxStaleMs: custom limit via deps', async () => {
+  const cache = fakeCache({ [KEY_A]: { value: [{ v: 'old' }], savedAt: 0, fresh: false } });
+  const out = await getForecast([A], { fetchImpl: fakeFetch({ v: 'new' }), cache, now: () => 5000, maxStaleMs: 1000 });
+  assert.deepEqual(out, [{ v: 'new' }]);
+});
+
+test('maxStaleMs: over-limit entry + network failure returns the old value and calls onError', async () => {
+  const cache = fakeCache({ [KEY_A]: { value: [{ v: 'ancient' }], savedAt: 0, fresh: false } });
+  const errors = [];
+  const out = await getForecast([A], {
+    fetchImpl: async () => { throw new Error('offline'); }, cache, now: () => 3 * DAY,
+    onError: (e) => errors.push(e),
+  });
+  assert.deepEqual(out, [{ v: 'ancient' }]);
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0] instanceof ApiError);
+});
+
+test('maxStaleMs: no cached value + network failure throws', async () => {
+  await assert.rejects(
+    getForecast([A], { fetchImpl: async () => { throw new Error('offline'); }, cache: fakeCache(), now: () => 3 * DAY }),
+    (e) => e instanceof ApiError,
+  );
+});
+
+test('maxStaleMs does not expire fresh entries (e.g. 30-day geocoding)', async () => {
+  const cache = fakeCache({ 'om:v1:geocoding:zh:5:taichung': { value: [{ name: 'x' }], savedAt: 0, fresh: true } });
+  const f = fakeFetch({ results: [] });
+  const out = await searchPlaces('Taichung', { fetchImpl: f, cache, now: () => 10 * DAY });
+  assert.deepEqual(out, [{ name: 'x' }]);
+  assert.equal(f.calls.length, 0);
+});
+
+// ---------------------------------------------------------------- privacy / keys / shapes
+
+test('coordinates are rounded to 2 dp in every outgoing URL', () => {
+  const loc = { lat: 24.1612345, lon: 120.6487654 };
+  for (const build of [buildForecastUrl, buildAirQualityUrl]) {
+    const u = new URL(build([loc, { lat: 23.8599999, lon: 120.9100001 }]));
+    assert.equal(u.searchParams.get('latitude'), '24.16,23.86');
+    assert.equal(u.searchParams.get('longitude'), '120.65,120.91');
+  }
+});
+
+test('-0 coordinates normalise to 0.00 in URLs and cache keys', () => {
+  const loc = { lat: -0.001, lon: -0 };
+  const u = new URL(buildForecastUrl([loc]));
+  assert.equal(u.searchParams.get('latitude'), '0.00');
+  assert.equal(u.searchParams.get('longitude'), '0.00');
+  const cache = fakeCache();
+  return getForecast([loc], { fetchImpl: fakeFetch({}), cache }).then(() => {
+    assert.equal(cache.sets[0].k, 'om:v1:forecast:0.00,0.00');
+  });
+});
+
+test('cache keys and default TTLs match cache.js', async () => {
+  const cache = fakeCache();
+  await getForecast([{ lat: 24.1612345, lon: 120.6487654 }], { fetchImpl: fakeFetch({}), cache });
+  assert.equal(cache.sets[0].k, cacheKey('forecast', 24.1612345, 120.6487654));
+  assert.equal(cache.sets[0].ttlMs, TTL.forecast);
+  const air = fakeCache();
+  await getAirQuality([A], { fetchImpl: fakeFetch({}), cache: air });
+  assert.equal(air.sets[0].k, cacheKey('air', A.lat, A.lon));
+  assert.equal(air.sets[0].ttlMs, TTL.air);
+  const geo = fakeCache();
+  await searchPlaces('x', { fetchImpl: fakeFetch({ results: [] }), cache: geo });
+  assert.equal(geo.sets[0].ttlMs, TTL.geocoding);
+  const neg = fakeCache();
+  await getForecast([{ lat: -0.001, lon: 5 }], { fetchImpl: fakeFetch({}), cache: neg });
+  assert.equal(neg.sets[0].k, cacheKey('forecast', -0.001, 5));
+});
+
+test('searchPlaces: missing fields map to null (never undefined)', async () => {
+  const out = await searchPlaces('x', { fetchImpl: fakeFetch({ results: [{ latitude: 1, longitude: 2 }] }) });
+  assert.deepEqual(out, [{ name: null, admin1: null, country: null, lat: 1, lon: 2, elevation: null, timezone: null }]);
+  const bare = await searchPlaces('x', { fetchImpl: fakeFetch({ results: [{}] }) });
+  assert.ok(Object.values(bare[0]).every((v) => v === null));
 });
