@@ -185,47 +185,53 @@ function locKey(api, locations) {
   return `om:v1:${api}:${locations.map((l) => `${fmtCoord(l.lat)},${fmtCoord(l.lon)}`).join('|')}`;
 }
 
-/** In-flight loads by cache key, shared by concurrent callers. */
-const inflight = new Map();
-/** Per-key count of writes made through this module (ordering guard). */
-const sequences = new Map();
+/**
+ * In-flight loads: cache instance -> (cache key -> promise). Calls without a
+ * cache never reach `sharedLoad` (they just call the loader), so no sentinel
+ * key is needed.
+ * @type {WeakMap<object, Map<string, Promise<any>>>}
+ */
+let inflight = new WeakMap();
 
 /**
- * INTERNAL, for tests only: forget in-flight loads (and, unless
- * `keepSequences` is true, write sequence numbers) so tests are isolated.
- * @param {{ keepSequences?: boolean }} [opts]
+ * INTERNAL, for tests only: forget all in-flight loads so tests are isolated.
  * @returns {void}
  */
-export function __resetInflight({ keepSequences = false } = {}) {
-  inflight.clear();
-  if (!keepSequences) sequences.clear();
+export function __resetInflight() {
+  inflight = new WeakMap();
 }
 
 /**
- * Run (or join) the single in-flight load for `key`. The result is written to
- * the cache only if no newer write landed for the key since the load started.
+ * Run (or join) the single in-flight load for `key` on this cache instance.
+ * The result is written to the cache (and reported as `applied`) only if no
+ * newer write landed for the key (`savedAt` later than the load's start).
  * @param {string} key
  * @param {number} ttlMs
  * @param {() => Promise<any>} load
- * @param {{ set(key:string, value:any, ttlMs:number): void }} cache
+ * @param {{ get(key:string): ({savedAt:number}|null), set(key:string, value:any, ttlMs:number): void }} cache
+ * @param {() => number} now
  * @returns {Promise<{ value: any, applied: boolean }>}
  */
-function sharedLoad(key, ttlMs, load, cache) {
-  const existing = inflight.get(key);
+function sharedLoad(key, ttlMs, load, cache, now) {
+  let map = inflight.get(cache);
+  if (!map) {
+    map = new Map();
+    inflight.set(cache, map);
+  }
+  const existing = map.get(key);
   if (existing) return existing;
-  const startSeq = sequences.get(key) ?? 0;
+  const startedAt = now();
   const p = (async () => {
     try {
       const value = await load();
-      if ((sequences.get(key) ?? 0) !== startSeq) return { value, applied: false };
+      if ((cache.get(key)?.savedAt ?? -Infinity) > startedAt) return { value, applied: false };
       cache.set(key, value, ttlMs);
-      sequences.set(key, startSeq + 1);
       return { value, applied: true };
     } finally {
-      if (inflight.get(key) === p) inflight.delete(key);
+      if (map.get(key) === p) map.delete(key);
     }
   })();
-  inflight.set(key, p);
+  map.set(key, p);
   return p;
 }
 
@@ -254,7 +260,7 @@ async function swr({ key, ttlMs, load, deps }) {
   if (hit && !hit.fresh && now() - hit.savedAt > maxStaleMs) {
     // Too old to show as-is: await the network, degrade to the old value if offline.
     try {
-      return (await sharedLoad(key, ttlMs, load, cache)).value;
+      return (await sharedLoad(key, ttlMs, load, cache, now)).value;
     } catch (err) {
       safeCall(onError, err);
       return hit.value;
@@ -263,7 +269,7 @@ async function swr({ key, ttlMs, load, deps }) {
   if (hit) {
     if (!hit.fresh) {
       // Background refresh: never throws, never rejects.
-      sharedLoad(key, ttlMs, load, cache).then(
+      sharedLoad(key, ttlMs, load, cache, now).then(
         ({ value, applied }) => {
           if (!applied) return;
           try {
@@ -277,7 +283,7 @@ async function swr({ key, ttlMs, load, deps }) {
     }
     return hit.value;
   }
-  return (await sharedLoad(key, ttlMs, load, cache)).value;
+  return (await sharedLoad(key, ttlMs, load, cache, now)).value;
 }
 
 /**
@@ -332,16 +338,17 @@ export function getAirQuality(locations, deps = {}) {
 
 /**
  * Search places by name. Always returns an array (empty when nothing matches).
- * Cache key: `om:v1:geocoding:{language}:{count}:{lowercased name}`.
+ * Cache key: `om:v1:geocoding:{language}:{count}:{trimmed, lowercased name}`; the request URL uses the trimmed name in its original case.
  * @param {string} name
  * @param {ApiDeps & { count?: number, language?: string }} [deps]
  * @returns {Promise<Array<{name:(string|null), admin1:(string|null), country:(string|null), lat:(number|null), lon:(number|null), elevation:(number|null), timezone:(string|null)}>>}
  */
 export function searchPlaces(name, deps = {}) {
   const opts = { count: deps.count ?? 5, language: deps.language ?? 'zh' };
-  const url = buildGeocodingUrl(name, opts);
+  const trimmed = String(name).trim();
+  const url = buildGeocodingUrl(trimmed, opts);
   return swr({
-    key: `om:v1:geocoding:${opts.language}:${opts.count}:${String(name).trim().toLowerCase()}`,
+    key: `om:v1:geocoding:${opts.language}:${opts.count}:${trimmed.toLowerCase()}`,
     ttlMs: deps.ttlMs ?? DEFAULT_TTL.geocoding,
     load: async () => {
       const body = await fetchJson(url, { fetchImpl: deps.fetchImpl, timeoutMs: deps.timeoutMs });

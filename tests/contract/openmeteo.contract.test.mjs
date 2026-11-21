@@ -177,15 +177,21 @@ test('error path: invalid parameter -> HTTP 400 with reason and ApiError', async
   });
 });
 
-/** fetch wrapper that retries on 429 / transient failures, for use as fetchImpl. */
+/**
+ * fetch wrapper that retries once on 429 / transient failures, for use as
+ * fetchImpl. Never retries once the caller's signal has aborted (timeout), so
+ * no background requests outlive a timed-out call; `withRetry` retries the rest.
+ */
 async function fetchWithRetry(url, opts) {
+  const MAX = 2;
   for (let i = 0; ; i++) {
+    if (opts?.signal?.aborted) throw new Error('aborted');
     try {
       const res = await fetch(url, opts);
-      if ((res.status === 429 || res.status >= 500) && i < 3) { await sleep(4000 * (i + 1)); continue; }
+      if ((res.status === 429 || res.status >= 500) && i < MAX - 1) { await sleep(4000 * (i + 1)); continue; }
       return res;
     } catch (err) {
-      if (i >= 3) throw err;
+      if (opts?.signal?.aborted || i >= MAX - 1) throw err;
       await sleep(4000 * (i + 1));
     }
   }

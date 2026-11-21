@@ -6,6 +6,27 @@
 const PREFIX = "om:v1:";
 
 /**
+ * Conservative cap on a serialized entry's length (characters). localStorage
+ * quotas are typically ~5 MB of UTF-16 (~2.5M chars); 1.5M chars is ~3 MB.
+ * Larger payloads are never written and never trigger eviction.
+ */
+export const MAX_ENTRY_CHARS = 1_500_000;
+
+/**
+ * True for the quota-exceeded errors thrown by browsers' Storage.setItem.
+ * @param {*} err
+ * @returns {boolean}
+ */
+function isQuotaError(err) {
+  return (
+    err?.name === "QuotaExceededError" ||
+    err?.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+    err?.code === 22 ||
+    err?.code === 1014
+  );
+}
+
+/**
  * Default time-to-live values in milliseconds.
  * @type {{forecast: number, air: number, geocoding: number}}
  */
@@ -109,9 +130,10 @@ export function createCache({ storage, now = () => Date.now(), maxLocationsPerAp
     },
     /**
      * Write an entry and evict the oldest in the same api namespace so at most
-     * `maxLocationsPerApi` remain. If `setItem` fails (e.g. quota), the oldest
-     * other entry in the namespace is evicted and the write retried, at most
-     * `maxLocationsPerApi` times. Never throws.
+     * `maxLocationsPerApi` remain. If `setItem` fails with a quota error, the
+     * oldest other entry in the namespace is evicted and the write retried, at
+     * most `maxLocationsPerApi` times; any other error gives up without
+     * evicting. Payloads over `MAX_ENTRY_CHARS` are skipped. Never throws.
      * @param {string} key
      * @param {*} value JSON-serialisable value.
      * @param {number} ttlMs Time-to-live in ms.
@@ -125,6 +147,7 @@ export function createCache({ storage, now = () => Date.now(), maxLocationsPerAp
       } catch {
         return;
       }
+      if (payload.length > MAX_ENTRY_CHARS) return; // can never fit: evict nothing
       const ns = namespaceOf(key);
       /** @returns {Array<{k: string, savedAt: number}>} Namespace entries, oldest first (corrupt first). */
       const byAge = () =>
@@ -142,8 +165,8 @@ export function createCache({ storage, now = () => Date.now(), maxLocationsPerAp
         try {
           storage.setItem(key, payload);
           written = true;
-        } catch {
-          if (attempt === maxLocationsPerApi || !ns) return;
+        } catch (err) {
+          if (!isQuotaError(err) || attempt === maxLocationsPerApi || !ns) return;
           try {
             const victim = byAge().find((e) => e.k !== key);
             if (!victim) return;

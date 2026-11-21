@@ -41,7 +41,7 @@ const localMs = nowMs + utcOffsetSeconds * 1000;  // then read with getUTC*()
 - `cacheKey(api, lat, lon)` → `"om:v1:{api}:{lat.toFixed(2)},{lon.toFixed(2)}"`; `-0.00` is normalised to `0.00`. Coordinates are rounded to 2 dp (~1 km) before leaving the device and in cache keys.
 - `createCache({ storage, now, maxLocationsPerApi = 5 })` → `{ get(key), set(key, value, ttlMs), remove(key) }`
   - `get` returns `null` or `{ value, savedAt, fresh }` (`fresh` = `0 <= age <= ttlMs`; an entry whose `savedAt` is in the future, e.g. after the clock moved back, is never fresh). Stale entries are still returned (stale-while-revalidate).
-  - `set` evicts the oldest entries so at most `maxLocationsPerApi` keys remain per `api`. If `setItem` fails (e.g. quota), it evicts the oldest *other* entry in the same api namespace and retries, at most `maxLocationsPerApi` times, then gives up silently.
+  - `set` evicts the oldest entries so at most `maxLocationsPerApi` keys remain per `api`. If `setItem` fails with a **quota error** (`name` `QuotaExceededError` or `NS_ERROR_DOM_QUOTA_REACHED`, or `code` 22 or 1014), it evicts the oldest *other* entry in the same api namespace and retries, at most `maxLocationsPerApi` times, then gives up silently. Any other error (e.g. `SecurityError`) gives up immediately and evicts nothing. A serialized payload longer than `MAX_ENTRY_CHARS = 1_500_000` (~3 MB UTF-16) is never written and evicts nothing. Once every other entry in the namespace has been evicted and the write still fails, nothing further is evicted.
   - Storage failures (quota, private mode, `storage` undefined) never throw; cache degrades to a no-op.
 - TTLs (ms) exported as `TTL = { forecast: 15 min, air: 30 min, geocoding: 30 days }`.
 
@@ -51,14 +51,14 @@ const localMs = nowMs + utcOffsetSeconds * 1000;  // then read with getUTC*()
 ### `js/api/openmeteo.js`
 - `buildForecastUrl(locations)` / `buildAirQualityUrl(locations)` / `buildGeocodingUrl(name, { count = 5, language = "zh" })` — `locations` is `[{ lat, lon }]`; multiple locations are comma-joined. **Coordinates are rounded to 2 dp (~1 km) before leaving the device and in cache keys** (`toFixed(2)`, `-0.00` → `0.00`).
 - `fetchJson(url, { fetchImpl = fetch, timeoutMs = 8000 })` → parsed JSON; throws `ApiError` (`{ name: "ApiError", status, reason }`) on HTTP error, Open-Meteo `{ error: true, reason }`, timeout (`status: 0, reason: "timeout"`) or network failure (`status: 0`).
-- `getForecast(locations, deps)` / `getAirQuality(locations, deps)` / `searchPlaces(name, deps)` — always return an **array** (one entry per location) even when Open-Meteo returns a single object. `searchPlaces` maps every field with `?? null` (`{ name, admin1, country, lat, lon, elevation, timezone }`, never `undefined`). `deps = { fetchImpl, cache, now, ttlMs, timeoutMs, maxStaleMs, onUpdate, onError }`; when `cache` is given, use `TTL` and stale-while-revalidate:
+- `getForecast(locations, deps)` / `getAirQuality(locations, deps)` / `searchPlaces(name, deps)` — always return an **array** (one entry per location) even when Open-Meteo returns a single object. `searchPlaces` trims the name; the request URL uses the trimmed name in its original case, the cache key `om:v1:geocoding:{language}:{count}:{trimmed lowercased}` lowercases it (the API is case-insensitive). It maps every field with `?? null` (`{ name, admin1, country, lat, lon, elevation, timezone }`, never `undefined`). `deps = { fetchImpl, cache, now, ttlMs, timeoutMs, maxStaleMs, onUpdate, onError }`; when `cache` is given, use `TTL` and stale-while-revalidate:
   - fresh entry: returned, no network.
   - stale entry younger than `maxStaleMs` (default 24 h, measured with `deps.now ?? Date.now`; applies to non-fresh entries only): returned immediately and refreshed in the background; `onUpdate(freshValue, { key })` is called when the refresh lands.
   - stale entry older than `maxStaleMs`: treated as a miss, the network is awaited. If that fails, the old value is returned and `onError(err)` is called (offline degradation); the error is thrown only when nothing is cached.
-  - **Dedupe**: a module-level `Map<key, Promise>` shares one in-flight load per cache key (misses and background refreshes); concurrent callers get the same value, and each caller's `onUpdate` fires. The entry is removed in `finally`.
-  - **Ordering guard**: a per-key write sequence number is captured when a load starts; if a newer write landed for the key by completion, the result is neither cached nor passed to `onUpdate`.
+  - **Dedupe**: in-flight loads live in a `WeakMap<cacheObject, Map<key, Promise>>`, so one request is shared per (cache instance, key) for misses and background refreshes. Concurrent callers sharing the same cache share one request and the **first caller's `fetchImpl`/`timeoutMs` are used**; a caller with a different cache instance makes its own request and its cache is written. Each caller's `onUpdate` fires. The entry is removed in `finally`. (Calls without a cache never dedupe.)
+  - **Ordering guard**: `startedAt = now()` (`deps.now ?? Date.now`) is recorded when a load starts; at completion, if `cache.get(key)?.savedAt > startedAt` (a newer write landed, e.g. from another tab) the result is neither cached nor passed to `onUpdate`.
   - If `onUpdate` throws, the cache already holds the fresh value and `onError({ phase: 'onUpdate', error })` is called (never reported as a failed refresh). Plain refresh failures call `onError(err)` with the `ApiError`.
-  - `__resetInflight({ keepSequences = false })` is **internal, for tests only**: clears the in-flight map (and sequence numbers unless `keepSequences`).
+  - `__resetInflight()` is **internal, for tests only**: forgets all in-flight loads.
 - `ATTRIBUTION = { text: "Weather data by Open-Meteo.com", href: "https://open-meteo.com/" }`
 
 Forecast query (single source of truth, exported as `FORECAST_PARAMS`):
@@ -100,3 +100,7 @@ Air quality query (`AIR_PARAMS`): `current=us_aqi,pm2_5`, `hourly=us_aqi,pm2_5`,
   Missing values are `null`, never `undefined`/`NaN`.
 
 **Staleness of `current`.** `now.observedAt` is `forecast.current.time` (or `null`). `stale.ageMinutes = minutesUntil(observedAt, minuteKey)` (`null` when `observedAt` is missing) and `stale.current` is `true` when `ageMinutes` is `null` or `|ageMinutes| > 90`. When `stale.current` is true, `now.temp/feels/humidity/code/label/wind` are taken from the `hourly` entry at `hourKey` (each `null` if that entry or field is absent, e.g. when the data is weeks old). Hourly has no wind direction or day/night flag, so `now.windDir` and `now.isDay` are `null` in that case (the stale observation is not reused); the label then uses the daytime wording. `hoursAvailable` is `false` when `hourKey` is outside `hourly.time`, so the UI can show an "outdated data" state.
+
+## Known limitations
+
+- Entries older than maxStaleMs wait up to timeoutMs for the network before the stale fallback is shown; M2 UI shows a loading state.

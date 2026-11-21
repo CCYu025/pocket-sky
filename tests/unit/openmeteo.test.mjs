@@ -237,6 +237,15 @@ test('SWR: miss with fetch failure throws ApiError', async () => {
   );
 });
 
+test('searchPlaces builds the URL from the trimmed name (original case); key is trimmed + lowercased', async () => {
+  const cache = fakeCache();
+  const f = fakeFetch({ results: [] });
+  await searchPlaces('TAICHUNG ', { fetchImpl: f, cache });
+  assert.equal(new URL(f.calls[0].url).searchParams.get('name'), 'TAICHUNG');
+  assert.ok(f.calls[0].url.includes('name=TAICHUNG&'));
+  assert.equal(cache.sets[0].k, 'om:v1:geocoding:zh:5:taichung');
+});
+
 test('searchPlaces uses cache key with language/count/name', async () => {
   const cache = fakeCache();
   await searchPlaces(' Taichung ', { fetchImpl: fakeFetch({ results: [] }), cache });
@@ -326,26 +335,47 @@ test('SWR dedupe: a failed shared load is removed from in-flight and reaches eve
   assert.deepEqual(await getForecast([A], { fetchImpl: f, cache }), [{ ok: 1 }]);
 });
 
-test('SWR ordering: slow older load that finishes after a newer write is discarded', async () => {
+test('SWR ordering: a load that finishes after a newer write (savedAt) is discarded', async () => {
   const cache = staleCache([{ v: 'cached' }]);
   const slow = gatedFetch();
-  const fast = gatedFetch();
   const updates = [];
   const onUpdate = (v) => updates.push(v);
   await getForecast([A], { fetchImpl: slow, cache, now: () => 2000, onUpdate });
   await tick();
-  // Simulate a second, independent load for the same key (e.g. another tab's module instance).
-  __resetInflight({ keepSequences: true });
-  await getForecast([A], { fetchImpl: fast, cache, now: () => 2000, onUpdate });
-  await tick();
-  fast.calls[0].release({ v: 'newer' });
-  await tick();
-  assert.deepEqual(cache.store.get(KEY_A).value, [{ v: 'newer' }]);
+  // Another writer (e.g. another tab) lands a newer entry while the load is pending.
+  cache.store.set(KEY_A, { value: [{ v: 'newer' }], savedAt: Date.now() + 1000, fresh: true });
   slow.calls[0].release({ v: 'older' });
   await tick();
-  assert.deepEqual(cache.store.get(KEY_A).value, [{ v: 'newer' }], 'older result must not overwrite');
-  assert.equal(cache.sets.length, 1);
-  assert.deepEqual(updates, [[{ v: 'newer' }]], 'older result must not reach onUpdate');
+  assert.deepEqual(cache.store.get(KEY_A).value, [{ v: 'newer' }], 'pending load must not overwrite');
+  assert.equal(cache.sets.length, 0);
+  assert.deepEqual(updates, [], 'pending load must not reach onUpdate');
+});
+
+test('in-flight is scoped per cache instance: different caches both fetch and both get written', async () => {
+  const c1 = fakeCache();
+  const c2 = fakeCache();
+  const f = gatedFetch();
+  const p1 = getForecast([A], { fetchImpl: f, cache: c1 });
+  const p2 = getForecast([A], { fetchImpl: f, cache: c2 });
+  await tick();
+  assert.equal(f.calls.length, 2);
+  f.calls[0].release({ n: 1 });
+  f.calls[1].release({ n: 2 });
+  await Promise.all([p1, p2]);
+  assert.equal(c1.sets.length, 1);
+  assert.equal(c2.sets.length, 1);
+});
+
+test('in-flight: same cache instance shares one fetch', async () => {
+  const c1 = fakeCache();
+  const f = gatedFetch();
+  const p1 = getForecast([A], { fetchImpl: f, cache: c1 });
+  const p2 = getForecast([A], { fetchImpl: f, cache: c1 });
+  await tick();
+  assert.equal(f.calls.length, 1);
+  f.calls[0].release({ n: 1 });
+  await Promise.all([p1, p2]);
+  assert.equal(c1.sets.length, 1);
 });
 
 test('SWR onUpdate throwing: reported as phase "onUpdate", not a refresh failure; cache keeps fresh value', async () => {

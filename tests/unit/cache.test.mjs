@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cacheKey, createCache, TTL } from "../../js/cache.js";
+import { cacheKey, createCache, TTL, MAX_ENTRY_CHARS } from "../../js/cache.js";
 
 /** Minimal in-memory Storage fake. */
 class FakeStorage {
@@ -278,7 +278,7 @@ test("quota error: if the retry still fails, nothing throws and only the evicted
   c.set(a, "a", 1000);
   c.set(other, "air", 1000);
   storage.setItem = () => {
-    throw new Error("quota");
+    throw Object.assign(new Error("quota"), { name: "QuotaExceededError" });
   };
   assert.doesNotThrow(() => c.set(cacheKey("forecast", 2, 2), "new", 1000));
   assert.equal(c.get(a), null, "the one evicted entry is gone");
@@ -292,7 +292,7 @@ test("quota error with nothing to evict leaves the existing entry for the same k
   const key = cacheKey("forecast", 1, 1);
   c.set(key, "old", 1000);
   storage.setItem = () => {
-    throw new Error("quota");
+    throw Object.assign(new Error("quota"), { name: "QuotaExceededError" });
   };
   assert.doesNotThrow(() => c.set(key, "new", 1000));
   assert.equal(c.get(key).value, "old");
@@ -336,4 +336,67 @@ test("non-serialisable value does not throw", () => {
   const key = cacheKey("forecast", 1, 1);
   assert.doesNotThrow(() => c.set(key, cyc, 1000));
   assert.equal(c.get(key), null);
+});
+
+/** Fill a forecast namespace with n entries and return their keys. */
+function seed(c, now, n) {
+  const keys = [];
+  for (let i = 0; i < n; i++) {
+    const k = cacheKey("forecast", i, i);
+    c.set(k, "v" + i, 1000);
+    now.advance(1);
+    keys.push(k);
+  }
+  return keys;
+}
+
+test("MAX_ENTRY_CHARS is exported", () => {
+  assert.equal(MAX_ENTRY_CHARS, 1_500_000);
+});
+
+test("oversize payload is not written and evicts nothing", () => {
+  const storage = new FakeStorage();
+  const now = clock(1000);
+  const c = createCache({ storage, now });
+  const keys = seed(c, now, 5);
+  let setCalls = 0;
+  const realSet = storage.setItem.bind(storage);
+  storage.setItem = (k, v) => { setCalls++; realSet(k, v); };
+  assert.doesNotThrow(() => c.set(cacheKey("forecast", 99, 99), "x".repeat(MAX_ENTRY_CHARS + 1), 1000));
+  assert.equal(setCalls, 0, "no write attempted");
+  for (const k of keys) assert.notEqual(c.get(k), null, "entry kept");
+  assert.equal(c.get(cacheKey("forecast", 99, 99)), null);
+});
+
+test("non-quota error (SecurityError) gives up immediately and evicts nothing", () => {
+  const storage = new FakeStorage();
+  const now = clock(1000);
+  const c = createCache({ storage, now });
+  const keys = seed(c, now, 3);
+  storage.setItem = () => {
+    const e = new Error("denied");
+    e.name = "SecurityError";
+    throw e;
+  };
+  assert.doesNotThrow(() => c.set(cacheKey("forecast", 99, 99), "new", 1000));
+  for (const k of keys) assert.notEqual(c.get(k), null, "entry kept");
+});
+
+test("quota detected via legacy code 22 / Firefox name / code 1014", () => {
+  for (const err of [{ code: 22 }, { name: "NS_ERROR_DOM_QUOTA_REACHED" }, { code: 1014 }]) {
+    const storage = new FakeStorage();
+    const now = clock(1000);
+    const c = createCache({ storage, now });
+    const [a] = seed(c, now, 2);
+    const realSet = storage.setItem.bind(storage);
+    let fail = 1;
+    storage.setItem = (k, v) => {
+      if (fail-- > 0) throw Object.assign(new Error("q"), err);
+      realSet(k, v);
+    };
+    const key = cacheKey("forecast", 99, 99);
+    c.set(key, "new", 1000);
+    assert.equal(c.get(a), null, "oldest evicted for " + JSON.stringify(err));
+    assert.equal(c.get(key).value, "new");
+  }
 });
