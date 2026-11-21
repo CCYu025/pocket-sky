@@ -6,6 +6,7 @@
 import { seg7Svg, escapeHtml as esc } from "../seg7.js";
 import { exerciseSlots, bestSlot, exerciseAdvice } from "../../rules/exercise.js";
 import { intText, clockOf } from "../format.js";
+import { EXERCISE_LOOKAHEAD_HOURS } from "../../rules/config.js";
 
 const pad2 = (h) => String(h).padStart(2, "0");
 const WORD = { good: "適合", ok: "普通", bad: "不建議" };
@@ -93,7 +94,7 @@ export function exerciseModel(vm, nowMs, pickedKey) {
     verdict: sel.slot ? VERDICT[sel.slot.level] ?? "無資料" : "無資料",
     advice: sel.slot ? exerciseAdvice(sel.slot) : "資料不足",
     metrics,
-    note: `現在 ${now}・從 ${start} 起算；22 時後延伸至明日 06:00`,
+    note: `現在 ${now}・從 ${start} 起算・未來 ${EXERCISE_LOOKAHEAD_HOURS} 小時`,
   };
 }
 

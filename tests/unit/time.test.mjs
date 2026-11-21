@@ -103,47 +103,44 @@ test("indexOfHour hit and miss", () => {
   assert.equal(indexOfHour([], "2026-11-21T00:00"), -1);
 });
 
-test("exerciseWindow at 14:20 is 14..23 (10 keys)", () => {
+test("exerciseWindow at 14:20 is the next 12 hours: 14..23 then 00..01 tomorrow", () => {
   const w = exerciseWindow(TAIPEI, utc(2026, 11, 21, 6, 20));
-  assert.equal(w.length, 10);
+  assert.equal(w.length, 12);
   assert.equal(w[0], "2026-11-21T14:00");
   assert.equal(w[9], "2026-11-21T23:00");
+  assert.equal(w[10], "2026-11-22T00:00");
+  assert.equal(w[11], "2026-11-22T01:00");
 });
 
-test("exerciseWindow at 21:59 is 21..23", () => {
-  const w = exerciseWindow(TAIPEI, utc(2026, 11, 21, 13, 59));
-  assert.deepEqual(w, ["2026-11-21T21:00", "2026-11-21T22:00", "2026-11-21T23:00"]);
-});
-
-test("exerciseWindow at 22:00 extends through 06:00 next day", () => {
-  const w = exerciseWindow(TAIPEI, utc(2026, 11, 21, 14, 0));
-  assert.equal(w.length, 9);
+test("exerciseWindow at 22:30 is 22..09 tomorrow (12 keys)", () => {
+  const w = exerciseWindow(TAIPEI, utc(2026, 11, 21, 14, 30));
+  assert.equal(w.length, 12);
   assert.equal(w[0], "2026-11-21T22:00");
-  assert.equal(w[1], "2026-11-21T23:00");
   assert.equal(w[2], "2026-11-22T00:00");
-  assert.equal(w[8], "2026-11-22T06:00");
+  assert.equal(w[11], "2026-11-22T09:00");
 });
 
-test("exerciseWindow at 23:30 extends through 06:00 next day", () => {
-  const w = exerciseWindow(TAIPEI, utc(2026, 11, 21, 15, 30));
-  assert.equal(w.length, 8);
-  assert.equal(w[0], "2026-11-21T23:00");
-  assert.equal(w[1], "2026-11-22T00:00");
-  assert.equal(w[7], "2026-11-22T06:00");
+test("exerciseWindow length is constant for every hour of the day", () => {
+  for (let h = 0; h < 24; h++) {
+    const w = exerciseWindow(TAIPEI, utc(2026, 11, 21, 0, 0) + ((h - 8) * 3600 + 59 * 60) * 1000);
+    assert.equal(w.length, 12, `hour ${h}`);
+    assert.equal(w[0].slice(11), `${String(h).padStart(2, "0")}:00`);
+  }
 });
 
-test("exerciseWindow at 00:10 is 00..23 (24 keys)", () => {
-  const w = exerciseWindow(TAIPEI, utc(2026, 11, 20, 16, 10));
-  assert.equal(w.length, 24);
-  assert.equal(w[0], "2026-11-21T00:00");
-  assert.equal(w[23], "2026-11-21T23:00");
+test("exerciseWindow lookAheadHours parameter (default 12)", () => {
+  const now = utc(2026, 11, 21, 6, 20);
+  assert.deepEqual(exerciseWindow(TAIPEI, now, 3), ["2026-11-21T14:00", "2026-11-21T15:00", "2026-11-21T16:00"]);
+  assert.deepEqual(exerciseWindow(TAIPEI, now, 0), []);
+  assert.equal(exerciseWindow(TAIPEI, now, 24).length, 24);
+  assert.deepEqual(exerciseWindow(TAIPEI, now), exerciseWindow(TAIPEI, now, 12));
 });
 
-test("exerciseWindow keys are consecutive hours", () => {
+test("exerciseWindow keys are consecutive hours across a year rollover", () => {
   const w = exerciseWindow(0, utc(2026, 12, 31, 23, 5));
   assert.equal(w[0], "2026-12-31T23:00");
   assert.equal(w[1], "2027-01-01T00:00");
-  assert.equal(w.at(-1), "2027-01-01T06:00");
+  assert.equal(w.at(-1), "2027-01-01T10:00");
   for (let i = 1; i < w.length; i++) assert.equal(w[i], addHours(w[i - 1], 1));
 });
 

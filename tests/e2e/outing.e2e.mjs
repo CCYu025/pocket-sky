@@ -261,28 +261,28 @@ test("exercise: default selects the best slot; bars, LCD, metrics, slider and be
   const { page } = app;
   await visit(app, "#outing/exercise");
   const model = exerciseModel(vmOf(forecast, DAY_MS), DAY_MS, null);
-  assert.equal(model.slots.length, 10, "14:00 .. 23:00");
+  assert.equal(model.slots.length, 12, "14:00 .. 01:00 tomorrow (next 12 hours)");
 
   const bars = await barState(page);
-  assert.equal(bars.length, 10);
+  assert.equal(bars.length, 12);
   for (const [i, s] of model.slots.entries()) {
     assert.equal(bars[i].label, slotLabel(s));
-    assert.match(bars[i].label, /^\d{2}:00，評分 \d+，(適合|普通|不建議)$/);
+    assert.match(bars[i].label, /^(明日 )?\d{2}:00，評分 \d+，(適合|普通|不建議)$/);
   }
   assert.equal(bars.filter((b) => b.pressed === "true").length, 1);
   assert.equal(bars[await pressedIndex(page)].hk, model.best.hourKey, "default = best slot");
-  assert.equal(await page.locator("button.xbar").count(), 10, "bars are <button>s");
+  assert.equal(await page.locator("button.xbar").count(), 12, "bars are <button>s");
 
   const hh = String(model.best.hour).padStart(2, "0");
   assert.deepEqual(await lcd(page), { time: `時間 ${hh}:00`, score: `評分 ${model.best.score}`, verdict: model.verdict, advice: model.advice });
   assert.equal(await page.locator(".best").innerText(), `最佳 ${hh}:00`);
   assert.deepEqual(await metricsOf(page), model.metrics);
   assert.equal((await metricsOf(page)).length, 6);
-  assert.equal(norm(await page.locator(".picker .note").innerText()), "現在 14:20・從 14:00 起算；22 時後延伸至明日 06:00");
+  assert.equal(norm(await page.locator(".picker .note").innerText()), "現在 14:20・從 14:00 起算・未來 12 小時");
 
   // slider: visible label, one step per slot
   assert.match(await page.locator('label[for="x-range"]').innerText(), /^滑桿選時間・\d{2}:00$/);
-  assert.equal(await page.locator("#x-range").getAttribute("max"), "9");
+  assert.equal(await page.locator("#x-range").getAttribute("max"), "11");
   assert.equal(await page.locator("#x-range").inputValue(), String(model.index));
   assert.equal(await page.locator("#x-range").getAttribute("aria-valuetext"), slotLabel(model.best));
   assert.ok((await page.locator("#x-range").boundingBox()).height >= 44);
@@ -370,31 +370,31 @@ test("exercise: keyboard Left/Right (and Home/End) move the selection and focus"
   await page.keyboard.press("ArrowRight");
   assert.equal(await pressedIndex(page), ids.length - 1, "clamped at the end");
   assert.equal(await active(), ids.at(-1));
-  assert.equal((await lcd(page)).time, "時間 23:00");
+  assert.equal((await lcd(page)).time, "時間 明日 01:00");
   // Tab still leaves the bars normally
   await page.keyboard.press("Tab");
   assert.notEqual(await active(), ids.at(-1));
   noErrors(app);
 });
 
-test("exercise at 22:30: window extends through 06:00 tomorrow with 明日 markers", async () => {
+test("exercise at 22:30: the next 12 hours run to 09:00 tomorrow with 明日 markers", async () => {
   const forecast = lateForecast();
   const app = await open({ forecast, now: LATE_UTC });
   const { page } = app;
   await visit(app, "#outing/exercise");
   const model = exerciseModel(vmOf(forecast, LATE_MS), LATE_MS, null);
-  assert.equal(model.slots.length, 9, "22:00 .. 06:00");
+  assert.equal(model.slots.length, 12, "22:00 .. 09:00 tomorrow");
   const bars = await barState(page);
-  assert.equal(bars.length, 9);
+  assert.equal(bars.length, 12);
   assert.deepEqual(bars.map((b) => b.label), model.slots.map(slotLabel));
   assert.equal(bars[0].label.startsWith("22:00，"), true);
   assert.equal(bars[2].label.startsWith("明日 00:00，"), true);
-  assert.equal(bars.at(-1).label.startsWith("明日 06:00，"), true);
-  assert.equal(await page.locator(".xt i").count(), 7);
+  assert.equal(bars.at(-1).label.startsWith("明日 09:00，"), true);
+  assert.equal(await page.locator(".xt i").count(), 10);
   assert.equal(await page.locator(".xt i").first().innerText(), "明日");
-  assert.deepEqual(await page.$$eval(".xt b", (b) => b.map((x) => x.textContent)), ["22", "23", "00", "01", "02", "03", "04", "05", "06"]);
-  assert.equal(await page.locator("#x-range").getAttribute("max"), "8");
-  assert.equal(norm(await page.locator(".picker .note").innerText()), "現在 22:30・從 22:00 起算；22 時後延伸至明日 06:00");
+  assert.deepEqual(await page.$$eval(".xt b", (b) => b.map((x) => x.textContent)), ["22", "23", "00", "01", "02", "03", "04", "05", "06", "07", "08", "09"]);
+  assert.equal(await page.locator("#x-range").getAttribute("max"), "11");
+  assert.equal(norm(await page.locator(".picker .note").innerText()), "現在 22:30・從 22:00 起算・未來 12 小時");
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "night", "auto theme after sunset");
   // selecting a tomorrow slot shows the marker in the LCD
   await page.locator(".xbar").nth(4).click();
@@ -611,7 +611,7 @@ test("motion: one infinite animation on commute (!RAIN), none on exercise; trans
   assert.equal(await anim(".xfill"), "grow");
   await settle(page);
   const grown = await page.evaluate(() => ({ ...window.__starts }));
-  assert.equal(grown.grow, 10);
+  assert.equal(grown.grow, 12);
   await page.locator(".xbar").nth(5).click();
   await settle(page);
   const after = await page.evaluate(() => ({ ...window.__starts }));

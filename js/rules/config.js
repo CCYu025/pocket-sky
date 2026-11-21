@@ -88,6 +88,9 @@ export const CHECKLIST_RULES = [
   },
 ];
 
+/** Exercise slots cover this many hours, starting at the current floored hour. */
+export const EXERCISE_LOOKAHEAD_HOURS = 12;
+
 /** Exercise scoring curves are `[x, score]` points, clamped at both ends. */
 export const EXERCISE_SCORING = {
   factors: {

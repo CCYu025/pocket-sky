@@ -66,10 +66,10 @@ const vmAt = (startHour, n, over = () => ({})) => ({
   hours: Array.from({ length: n }, (_, i) => hourEntry(startHour + i, over(startHour + i))),
 });
 
-test("slots at 14:20 cover 14..23, none tomorrow", () => {
-  const slots = exerciseSlots(vmAt(14, 24), nowAt(14, 20));
-  assert.deepEqual(slots.map((s) => s.hour), [14, 15, 16, 17, 18, 19, 20, 21, 22, 23]);
-  assert.ok(slots.every((s) => !s.isTomorrow));
+test("slots at 14:20 cover the next 12 hours: 14..23 then 00..01 tomorrow", () => {
+  const slots = exerciseSlots(vmAt(14, 30), nowAt(14, 20));
+  assert.deepEqual(slots.map((s) => s.hour), [14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1]);
+  assert.deepEqual(slots.map((s) => s.isTomorrow), [false, false, false, false, false, false, false, false, false, false, true, true]);
   assert.equal(slots[0].hourKey, "2026-11-21T14:00");
   assert.equal(slots[0].score, 100);
   assert.equal(slots[0].level, "good");
@@ -77,11 +77,16 @@ test("slots at 14:20 cover 14..23, none tomorrow", () => {
   assert.equal(slots[0].metrics.temp, 20);
 });
 
-test("slots at 22:30 are 22..23 plus tomorrow 00..06 flagged isTomorrow", () => {
-  const slots = exerciseSlots(vmAt(22, 24), nowAt(22, 30));
-  assert.deepEqual(slots.map((s) => s.hour), [22, 23, 0, 1, 2, 3, 4, 5, 6]);
-  assert.deepEqual(slots.map((s) => s.isTomorrow), [false, false, true, true, true, true, true, true, true]);
+test("slots at 22:30 are 22..23 plus tomorrow 00..09 flagged isTomorrow", () => {
+  const slots = exerciseSlots(vmAt(22, 30), nowAt(22, 30));
+  assert.deepEqual(slots.map((s) => s.hour), [22, 23, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.deepEqual(slots.map((s) => s.isTomorrow), [false, false, true, true, true, true, true, true, true, true, true, true]);
   assert.equal(slots[2].hourKey, "2026-11-22T00:00");
+});
+
+test("slots at 06:30 are 12 hours too (no longer a longer morning window)", () => {
+  assert.equal(exerciseSlots(vmAt(6, 30), nowAt(6, 30)).length, 12);
+  assert.equal(exerciseSlots(vmAt(0, 30), nowAt(0, 10)).length, 12);
 });
 
 test("slots only for hours present in vm.hours (shorter than the window)", () => {

@@ -140,7 +140,7 @@ test("slotLabel and levelWord", () => {
 test("exerciseModel: 14:20 window, default best, picked slot, six metrics", () => {
   const vm = vmAt(NOW);
   const m = exerciseModel(vm, NOW, null);
-  assert.equal(m.slots.length, 10);
+  assert.equal(m.slots.length, 12);
   assert.equal(m.slot, m.best);
   assert.equal(m.picked, false);
   assert.equal(m.metrics.length, 6);
@@ -152,25 +152,26 @@ test("exerciseModel: 14:20 window, default best, picked slot, six metrics", () =
   const p = exerciseModel(vm, NOW, other.hourKey);
   assert.equal(p.slot, p.slots.find((s) => s.hourKey === other.hourKey));
   assert.equal(p.picked, true);
-  assert.match(m.note, /^現在 14:20・從 14:00 起算；22 時後延伸至明日 06:00$/);
+  assert.equal(m.note, "現在 14:20・從 14:00 起算・未來 12 小時");
 });
 
-test("exerciseModel: 22:30 extends to tomorrow 06:00", () => {
+test("exerciseModel: 22:30 looks 12 hours ahead, to 09:00 tomorrow", () => {
   const m = exerciseModel(vmAt(LATE), LATE, null);
-  assert.equal(m.slots.length, 9);
-  assert.deepEqual(m.slots.map((s) => s.isTomorrow), [false, false, true, true, true, true, true, true, true]);
+  assert.equal(m.slots.length, 12);
+  assert.deepEqual(m.slots.map((s) => s.isTomorrow), [false, false, ...Array(10).fill(true)]);
+  assert.equal(m.note, "現在 22:30・從 22:00 起算・未來 12 小時");
 });
 
 test("exerciseHtml: bars are buttons with accessible names and aria-pressed; escaping; no inline styles", () => {
   const vm = vmAt(NOW);
   const model = exerciseModel(vm, NOW, null);
   const html = exerciseHtml(ready(vm), ui({ outing: { scenario: "exercise", commute: COMMUTE } }));
-  assert.equal((html.match(/<button type="button" class="xbar/g) || []).length, 10);
+  assert.equal((html.match(/<button type="button" class="xbar/g) || []).length, 12);
   assert.equal((html.match(/aria-pressed="true"/g) || []).length, 1);
   for (const s of model.slots) assert.ok(html.includes(`aria-label="${slotLabel(s)}"`), slotLabel(s));
   assert.ok(html.includes(`id="slot-${model.best.hourKey}"`));
   assert.match(html, new RegExp(`class="key best" data-action="pick-best">最佳 ${String(model.best.hour).padStart(2, "0")}:00`));
-  assert.match(html, /<input type="range" id="x-range" min="0" max="9" step="1" value="\d"/);
+  assert.match(html, /<input type="range" id="x-range" min="0" max="11" step="1" value="\d"/);
   assert.match(html, /<label for="x-range" class="range-k">/);
   assert.equal((html.match(/class="metric"/g) || []).length, 6);
   assert.doesNotMatch(html, /\sstyle=/);
@@ -182,8 +183,8 @@ test("exerciseHtml: bars are buttons with accessible names and aria-pressed; esc
 
 test("exerciseHtml: tomorrow markers; loading, empty and error skeletons", () => {
   const late = exerciseHtml(ready(vmAt(LATE)), ui({ nowMs: LATE }));
-  assert.equal((late.match(/<i>明日<\/i>/g) || []).length, 7);
-  assert.match(late, /aria-label="明日 06:00，/);
+  assert.equal((late.match(/<i>明日<\/i>/g) || []).length, 10);
+  assert.match(late, /aria-label="明日 09:00，/);
   const loading = exerciseHtml({ status: "loading", vm: null }, ui());
   assert.match(loading, /時間 無資料/);
   assert.match(loading, /載入中…/);

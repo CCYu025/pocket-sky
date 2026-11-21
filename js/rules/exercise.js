@@ -2,7 +2,7 @@
  * Exercise scoring and slots (pure).
  * @module rules/exercise
  */
-import { EXERCISE_SCORING, EXERCISE_ADVICE } from "./config.js";
+import { EXERCISE_SCORING, EXERCISE_ADVICE, EXERCISE_LOOKAHEAD_HOURS } from "./config.js";
 import { exerciseWindow } from "../time.js";
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -68,7 +68,7 @@ export function exerciseSlots(vm, nowMs) {
   const byKey = new Map((vm.hours ?? []).map((h) => [h.hourKey, h]));
   const today = String(vm.now.hourKey).slice(0, 10);
   const slots = [];
-  for (const key of exerciseWindow(vm.location.utcOffsetSeconds, nowMs)) {
+  for (const key of exerciseWindow(vm.location.utcOffsetSeconds, nowMs, EXERCISE_LOOKAHEAD_HOURS)) {
     const h = byKey.get(key);
     if (!h) continue;
     const score = scoreHour(h);
