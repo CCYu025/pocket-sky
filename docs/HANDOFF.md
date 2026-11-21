@@ -16,12 +16,14 @@
 | M1 | 資料層：time / cache / store / Open-Meteo client / derive | ✅ PR #1 已合併 |
 | M2 | 今天頁：LCD、提醒、主題（日夜）、a11y、CSP | ✅ PR #2 已合併 |
 | M3 | 外出頁：通勤、運動、準備清單與評分規則 | ✅ PR #3 已合併 |
-| M4 | 地點搜尋／收藏、公司地點、出遊、manifest＋圖示 | 🟡 分支 `m4-places`，審查兩輪通過，最後一批修正（見 §3）完成後開 PR #4 |
+| M4 | 地點搜尋／收藏、公司地點、出遊、manifest＋圖示 | 🟡 分支 `m4-places`，全部修正完成，PR #4 已開、等使用者同意合併（見 §3） |
 | M5 | 動畫細節、離線降級、service worker、Lighthouse、部署 GitHub Pages | ⬜ 未開始 |
 
-## 3. 交接當下的進行中工作（M4 最後一批）
+## 3. 交接當下的狀態（M4 收尾）
 
-分支 `m4-places`。第二輪審查結論「可合併」，但 lead 決定合併前先修以下項目（已派 Sonnet agent 處理；若未完成或未 commit，請照此清單完成）：
+**已完成**：以下最後一批修正已在 commit `612981d` 完成（unit 508、e2e 88 全過，截圖已重產）。PR #4 已開：https://github.com/CCYu025/pocket-sky/pull/4 。**下次第一步**：確認 PR #4 的 CI 是綠的 → 請使用者回覆「合併 PR #4」→ 合併 → 同步 `main` → 開 `m5-pwa-deploy` 分支並寫 M5 規格（§4）。
+
+（以下為該批修正的內容紀錄）
 
 1. **N1** `js/rules/trip.js` `wetSpan`：雨天區間改為「連續雨段」敘述（單段 `15–19 時`；兩段 `09 時、15 時`；三段以上 `多個時段`），建議時段不得落在雨段內。
 2. **N2** `bestWindow` 的「乾」判定加上 `rain < 0.5 mm`（與雨傘規則一致）。
@@ -32,7 +34,7 @@
 
 **完成判定**：`npm test`、`npm run test:e2e` 全過（跑兩次）、預設 e2e 後 `git status` 乾淨、審查員 probe7 通過、重產截圖並目視 trip-night / picker。然後：push → 開 PR #4（`gh api repos/CCYu025/pocket-sky/pulls ...`，GraphQL 不可用）→ 等 CI（unit + e2e）綠 → **請使用者明確同意後**才合併（合併動作會被權限分類器擋，需使用者回覆「合併 PR #4」）。
 
-交接時最後已推送的 commit：`c54f399`（M4 第一輪修正＋截圖）。M4 測試基準：unit 497、e2e 87。
+M4 測試基準：unit 508、e2e 88。
 
 ## 4. 下一步：M5 範圍（尚未寫規格）
 
