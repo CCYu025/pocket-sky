@@ -51,6 +51,12 @@ const navLinks = { today: doc.getElementById("nav-today"), outing: doc.getElemen
 const themeMeta = doc.querySelector('meta[name="theme-color"]');
 const live = doc.getElementById("live");
 
+// Open-Meteo attribution (CC BY 4.0): one persistent footer link outside #view, so every screen
+// and state shows it and no view re-render ever touches it.
+const attributionLink = doc.getElementById("attribution");
+attributionLink.textContent = ATTRIBUTION.text;
+attributionLink.href = ATTRIBUTION.href;
+
 const announcer = createAnnouncer();
 const anim = createAnimTracker();
 const outingAnnouncer = createOutingAnnouncer();
@@ -137,7 +143,7 @@ function render() {
   const exercise = outing?.scenario === "exercise" && hasData ? exerciseModel(state.vm, now(), outingUi.picked) : null;
 
   if (outing) renderOuting(root, state, { outing, nowMs: now(), picked: outingUi.picked, flip: outingUi.flip, exercise });
-  else renderToday(root, state, { attribution: ATTRIBUTION });
+  else renderToday(root, state);
 
   // One-shot animations: `boot` once per route visit, shake when a new alert id appears.
   root.classList.toggle("boot", flags.boot);

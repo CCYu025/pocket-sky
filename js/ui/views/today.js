@@ -122,10 +122,9 @@ function sun(vm) {
 /**
  * Full Today view HTML for a controller state.
  * @param {object} state Controller state (see js/app/controller.js).
- * @param {{attribution: {text: string, href: string}}} ui
  * @returns {string} HTML.
  */
-export function todayHtml(state, ui) {
+export function todayHtml(state) {
   const { status, vm, alert } = state;
   const hasVm = Boolean(vm);
   let title;
@@ -149,7 +148,6 @@ export function todayHtml(state, ui) {
   const show = status === "loading" || status === "error" ? null : vm;
   parts.push(hero(show, state.fetchedAt));
   if (status !== "error") parts.push(metrics(show), rainBars(show), sun(show));
-  parts.push(`<a class="attribution" data-k="attribution" href="${esc(ui.attribution.href)}" rel="noopener" target="_blank">${esc(ui.attribution.text)}</a>`);
   return parts.join("\n");
 }
 
@@ -175,12 +173,11 @@ export function applyDynamicStyles(root) {
  * only the nodes whose content changed are touched.
  * @param {HTMLElement} root The `<main>` element.
  * @param {object} state Controller state.
- * @param {{attribution: {text: string, href: string}}} ui
  * @returns {void}
  */
-export function renderToday(root, state, ui) {
+export function renderToday(root, state) {
   const busy = state.status === "loading" ? "true" : "false";
   if (root.getAttribute("aria-busy") !== busy) root.setAttribute("aria-busy", busy); // no needless mutations
-  morphHtml(root, todayHtml(state, ui));
+  morphHtml(root, todayHtml(state));
   applyDynamicStyles(root);
 }
