@@ -48,7 +48,7 @@ const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
  *   before tomorrow's OUT) for display. `legs[i]`: `{ key, name, label, hour, time: 'HH:00', tomorrow, entry, wx, detail, rainMax, warn, aria }`
  *   (`entry` is the leg's first hour; the rain figure is the peak over the leg's two hours, which is
  *   what the checklist evaluates). `items[i]`: checklist item plus `tags`, one per leg that triggers it on
- *   its own, carrying that leg's own value (`出門 08:00・體感 16°`, `回家 18:00・降雨 60%`); `來回`
+ *   its own, carrying that leg's own value (`出門 08:00・體感 16°`, `回家 18:00・降雨 60%`; `明日 ` prefix for a tomorrow leg); `來回`
  *   when only both legs together trigger it (a large temperature range across the legs).
  */
 export function commuteModel(vm, commute) {
@@ -80,7 +80,7 @@ export function commuteModel(vm, commute) {
   const perLeg = legs.map((l) => evaluateChecklist(l.hours, undefined, { today }));
   const combined = evaluateChecklist([...legs[0].hours, ...legs[1].hours], undefined, { today });
   const items = combined.map((it, i) => {
-    const tags = legs.flatMap((l, j) => (perLeg[j][i].on ? [`${l.name} ${l.time}・${valueText(perLeg[j][i])}`] : []));
+    const tags = legs.flatMap((l, j) => (perLeg[j][i].on ? [`${l.tomorrow ? "明日 " : ""}${l.name} ${l.time}・${valueText(perLeg[j][i])}`] : []));
     if (it.on && tags.length === 0) tags.push("來回");
     return { ...it, tags };
   });

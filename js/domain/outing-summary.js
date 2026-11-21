@@ -5,7 +5,7 @@
 import { COMMUTE_HEADLINE_RAIN_ID } from "../rules/config.js";
 
 const on = (items, id) => Array.isArray(items) && items.some((i) => i.id === id && i.on);
-/** The mask branch is only for poor air (AQI >= 100); a PM2.5-only item does not change the headline. */
+/** The AQI mask branch is only for poor air (AQI >= 100); a PM2.5-only mask has its own, lower branch. */
 const maskOn = (items) => Array.isArray(items) && items.some((i) => i.id === "mask" && i.on && i.field === "aqi");
 
 /**
@@ -33,8 +33,10 @@ function period(h, tomorrow = false) {
  *   `tomorrow`: which legs fall on tomorrow, for the day words.
  * @returns {string} Priority: both legs empty `資料不足`; rain on both
  *   `來回都可能下雨`; back only `{period}回家會遇到雨`; out only `{period}出門可能下雨`
- *   (`明早 / 明天下午 / 明天傍晚 / 明晚` for a tomorrow leg); mask (AQI >= 100 only)
- *   `空氣品質差，記得戴口罩`; jacket `氣溫偏低，記得帶外套`; else `來回都舒適`.
+ *   (`明早 / 明天下午 / 明天傍晚 / 明晚` for a tomorrow leg); mask (AQI >= 100)
+ *   `空氣品質差，記得戴口罩`; jacket `氣溫偏低，記得帶外套` (low feels) or `早晚溫差大，記得帶外套`
+ *   (temperature range); PM2.5-only mask `PM2.5 偏高，敏感族群記得戴口罩`; sunscreen `紫外線強，記得防曬`;
+ *   else `來回都舒適` (so never shown while any combined item is on).
  */
 export function commuteHeadline(outItems, backItems, outHours, backHours, opts = {}) {
   const oh = outHours ?? [];
@@ -49,6 +51,9 @@ export function commuteHeadline(outItems, backItems, outHours, backHours, opts =
   if (o) return `${period(oh[0]?.hour ?? 8, Boolean(tm.out))}出門可能下雨`;
   const all = opts.combined ?? [...(outItems ?? []), ...(backItems ?? [])];
   if (maskOn(all)) return "空氣品質差，記得戴口罩";
-  if (on(all, "jacket")) return "氣溫偏低，記得帶外套";
+  const jacket = all.find((i) => i.id === "jacket" && i.on);
+  if (jacket) return jacket.field === "temp" ? "早晚溫差大，記得帶外套" : "氣溫偏低，記得帶外套";
+  if (on(all, "mask")) return "PM2.5 偏高，敏感族群記得戴口罩";
+  if (on(all, "sunscreen")) return "紫外線強，記得防曬";
   return "來回都舒適";
 }
