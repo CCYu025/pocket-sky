@@ -10,6 +10,7 @@ const require = createRequire(import.meta.url);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(HERE, "../..");
 export const SHOTS = path.join(ROOT, "docs/screenshots/m2");
+export const SHOTS_M3 = path.join(ROOT, "docs/screenshots/m3");
 
 /**
  * Load Playwright: project dependency first, then the preinstalled tools dir.
@@ -30,6 +31,9 @@ export function loadPlaywright() {
 /** Fixed instants (UTC): 14:20 and 20:30 Taipei on 2026-11-21. */
 export const DAY_UTC = "2026-11-21T06:20:00Z";
 export const NIGHT_UTC = "2026-11-21T12:30:00Z";
+/** 22:30 Taipei on 2026-11-21 (exercise window extends to 06:00 tomorrow). */
+export const LATE_UTC = "2026-11-21T14:30:00Z";
+export const LATE_MS = Date.parse(LATE_UTC);
 export const DAY_MS = Date.parse(DAY_UTC);
 export const NIGHT_MS = Date.parse(NIGHT_UTC);
 
@@ -81,6 +85,48 @@ export function rainyForecast() {
 export function coldDropForecast() {
   return dayForecast((f) => {
     [24, 22, 20, 18].forEach((v, i) => (f.hourly.temperature_2m[IDX_14 + i] = v));
+  });
+}
+
+/**
+ * Showers 15:00-17:00 on top of the real fixture, so the exercise bars show all three levels
+ * (good before and after, ok at 15:00, bad at 16:00-17:00).
+ */
+export function showersForecast() {
+  return dayForecast((f) => {
+    const h = f.hourly;
+    [[IDX_14 + 1, 50, 20, 78, 20], [IDX_14 + 2, 95, 12, 95, 45], [IDX_14 + 3, 95, 12, 95, 45]].forEach(([i, p, t, rh, w]) => {
+      h.precipitation_probability[i] = p;
+      h.temperature_2m[i] = t;
+      h.relative_humidity_2m[i] = rh;
+      h.wind_speed_10m[i] = w;
+    });
+  });
+}
+
+/** Observation at 22:15 so `current` is fresh at the 22:30 clock. */
+export function lateForecast() {
+  return dayForecast((f) => {
+    f.current.time = "2026-11-21T22:15";
+    f.current.is_day = 0;
+  });
+}
+
+/**
+ * Synthetic rainy evening built from the real fixture: 18:00-19:00 rainProb 60 (0.8 mm), colder
+ * temperatures there (feels <= 18), so umbrella and jacket trigger on the 08:00 / 18:00 commute.
+ */
+export function rainyEveningForecast() {
+  return dayForecast((f) => {
+    const h = f.hourly;
+    [42, 43].forEach((i, k) => {
+      h.precipitation_probability[i] = 60;
+      h.precipitation[i] = 0.8;
+      h.weather_code[i] = 95;
+      h.temperature_2m[i] = [17, 16][k];
+      h.apparent_temperature[i] = [15, 14][k];
+      h.wind_speed_10m[i] = 18;
+    });
   });
 }
 
@@ -186,13 +232,13 @@ export async function settle(page) {
  * so the output is stable. Regenerate with `E2E_SCREENSHOTS=1 E2E_REAL_FONTS=1 npm run test:e2e`.
  * @param {object} page
  * @param {string} name File name without extension.
- * @param {{fullPage?: boolean}} [o] `fullPage: false` captures only the viewport (above the fold).
+ * @param {{fullPage?: boolean, dir?: string}} [o] `fullPage: false` captures only the viewport (above the fold); `dir` defaults to `SHOTS` (m2), M3 passes `SHOTS_M3`.
  * @returns {Promise<string|null>} Path, or null when screenshots are disabled.
  */
-export async function shot(page, name, { fullPage = true } = {}) {
+export async function shot(page, name, { fullPage = true, dir = SHOTS } = {}) {
   if (process.env.E2E_SCREENSHOTS !== "1") return null;
-  mkdirSync(SHOTS, { recursive: true });
-  const file = path.join(SHOTS, `${name}.png`);
+  mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${name}.png`);
   await settle(page);
   // A sticky nav would be pinned to the first viewport in a full-page capture (covering content,
   // leaving a gap at the real bottom): lay it out in flow for the capture only.

@@ -58,8 +58,8 @@ test("axe: loading", () =>
     await app.go();
     await app.page.locator(".hero").waitFor();
   }));
-test("axe: outing placeholder", () =>
+test("axe: outing", () =>
   scenario("outing", {}, async (app) => {
     await app.go("#outing");
-    await app.page.getByText("外出規劃：M3 開發中").waitFor();
+    await app.page.locator(".chips").waitFor();
   }));

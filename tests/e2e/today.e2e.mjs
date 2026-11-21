@@ -137,7 +137,7 @@ test("bottom nav (LIGHT / 今天 / 外出) is inside the 390x844 viewport in eve
 
   const outing = await open({});
   await outing.go("#outing");
-  await outing.page.getByText("外出規劃：M3 開發中").waitFor();
+  await outing.page.locator(".chips").waitFor();
   await assertNavInViewport(outing.page, "outing");
   const bg = await outing.page.locator(".nav").evaluate((el) => getComputedStyle(el).backgroundColor);
   assert.equal(bg, "rgb(255, 247, 214)", "nav paints --shell so content never shows through");
@@ -473,38 +473,38 @@ test("one-shot animations do not replay on refresh: boot once per visit, shake o
 
   // leaving and returning is a new visit: boot runs again, the same alert does not shake again
   await page.locator("#nav-outing").click();
-  await page.getByText("外出規劃：M3 開發中").waitFor();
+  await page.locator(".chips").waitFor();
   await page.locator("#nav-today").click();
   await page.locator(".metric").first().waitFor();
   await settle(page);
   const back = await page.evaluate(() => ({ ...window.__starts }));
-  assert.equal(back.boot, 2);
+  assert.equal(back.boot, 3, "today, the outing LCD (its own visit), today again");
   assert.equal(back.shake, 1);
   noErrors(app);
 });
 
-test("hash navigation: #outing placeholder and back to #today", async () => {
+test("hash navigation: #outing and back to #today", async () => {
   const app = await open({});
   const { page } = app;
   await app.go();
   await waitReady(page);
   await page.locator("#nav-outing").click();
-  await page.getByText("外出規劃：M3 開發中").waitFor();
+  await page.locator(".chips").waitFor();
   assert.equal(await page.evaluate(() => location.hash), "#outing");
   assert.equal(await page.locator("#nav-outing").getAttribute("aria-current"), "page");
   assert.equal(await page.locator("#nav-today").getAttribute("aria-current"), null);
   await page.locator("#nav-today").click();
-  await page.locator(".hero").waitFor();
+  await page.locator(".sun").waitFor(); // Today-only block (the outing screen has a .hero too)
   assert.equal(await page.evaluate(() => location.hash), "#today");
   assert.equal(await page.locator("#nav-today").getAttribute("aria-current"), "page");
   await page.goBack();
   await page.waitForFunction(() => location.hash === "#outing");
-  await page.getByText("外出規劃：M3 開發中").waitFor();
+  await page.locator(".chips").waitFor();
   // direct load of #outing
   await page.goto(server.url + "#today");
   await page.goto(server.url + "#outing");
   await page.reload();
-  await page.getByText("外出規劃：M3 開發中").waitFor();
+  await page.locator(".chips").waitFor();
   noErrors(app);
 });
 
