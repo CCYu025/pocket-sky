@@ -7,7 +7,9 @@
  * missing) day/night is computed from the most recent cached forecast
  * (om:v1:forecast:*, latest savedAt: today's sunrise/sunset at the cached
  * utc offset, else current.is_day), and only without a usable cache the last
- * resolved theme (ps:theme-last, written by the app) is used.
+ * resolved theme (ps:theme-last, written by the app) is used. With neither (the
+ * very first launch) the device clock decides as a last resort: 18:00-06:00 is
+ * night, otherwise the stylesheet default (day) stays.
  * Must never throw: storage can be blocked or missing. Keep THEME_COLORS in
  * js/ui/theme.js in sync (a unit test checks it).
  */
@@ -67,6 +69,14 @@
       }
     }
     var theme = valid(pref) ? pref : computed ? computed : valid(last) ? last : null;
+    if (!theme) {
+      try {
+        var hour = new Date(Date.now()).getHours();
+        theme = hour >= 18 || hour < 6 ? "night" : null;
+      } catch (e) {
+        theme = null;
+      }
+    }
     if (!theme) return;
     document.documentElement.dataset.theme = theme;
     var meta = document.querySelector('meta[name="theme-color"]');
