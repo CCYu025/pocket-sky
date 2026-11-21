@@ -83,36 +83,77 @@ function tempDrop(vm) {
 }
 
 /**
- * Evaluate all alert rules against a view model.
- * Extra field beyond the documented contract: `value` (rounded rain % or
- * temperature drop), used by `headline`.
- * @param {Object|null} vm View model from `toViewModel`.
- * @param {Object} opts
- * @param {Object<string, string>} [opts.dismissed={}] Dismissed alert ids (id -> truthy).
- * @param {Object<string, number>} [opts.lastShown={}] kind -> epoch ms the kind was last shown.
- * @param {Object<string, string>} [opts.lastShownId={}] Addition to the contract:
- *   kind -> alert id (event) that was last shown. A kind inside its cooldown is
- *   suppressed for a *different* event of that kind, but the same id
- *   (`lastShownId[kind] === id`) is exempt, so re-renders keep showing it.
- * @param {number} opts.nowMs Current epoch ms (injected).
- * @returns {Array<{id: string, kind: string, startsAt: string, title: string, detail: string, priority: number, value: number}>}
- *   Alerts, highest priority first.
+ * Whether the previously shown event of a kind is still ongoing or upcoming
+ * (its start hour is no earlier than `windowHours` before the current hour).
+ * @param {string|undefined} prevId Previous id `${kind}:${startsAt}`.
+ * @param {string} kind
+ * @param {string} nowHourKey Current hourKey of the view model.
+ * @returns {boolean}
  */
-export function evaluateAlerts(vm, { dismissed = {}, lastShown = {}, lastShownId = {}, nowMs } = {}) {
-  if (!vm || !vm.hoursAvailable || !Array.isArray(vm.hours) || vm.hours.length === 0) return [];
+function previousRunning(prevId, kind, nowHourKey) {
+  if (typeof prevId !== 'string' || !prevId.startsWith(`${kind}:`) || typeof nowHourKey !== 'string') return false;
+  const startsAt = prevId.slice(kind.length + 1);
+  const windowHours = ALERT_RULES[kind].windowHours;
+  const cutoff = new Date(`${nowHourKey}:00Z`).getTime() - windowHours * HOUR_MS;
+  const start = new Date(`${startsAt}:00Z`).getTime();
+  return Number.isFinite(cutoff) && Number.isFinite(start) && start >= cutoff;
+}
+
+/**
+ * Evaluate all alert rules, also reporting continuations hidden by dismissal.
+ * An alert of kind K is a *continuation* of the previously shown event when
+ * `lastShownId[K]` is a different id whose event has not ended (see
+ * `previousRunning`): it is shown regardless of cooldown, carries
+ * `continuation: true` and `continues: <previous id>`, and inherits a
+ * dismissal of the previous id (then it is returned in `inherited`, not
+ * `alerts`). Pure: the caller records the state.
+ * @param {Object|null} vm View model from `toViewModel`.
+ * @param {Object} opts Same as `evaluateAlerts`.
+ * @returns {{alerts: Array<Object>, inherited: Array<Object>}}
+ */
+export function evaluateAlertsDetailed(vm, { dismissed = {}, lastShown = {}, lastShownId = {}, nowMs } = {}) {
   const out = [];
+  const inherited = [];
+  if (!vm || !vm.hoursAvailable || !Array.isArray(vm.hours) || vm.hours.length === 0) return { alerts: out, inherited };
+  const nowHourKey = (vm.now && vm.now.hourKey) || vm.hours[0].hourKey;
   for (const [kind, fn] of [['rainJump', rainJump], ['tempDrop', tempDrop]]) {
     const alert = fn(vm);
     if (!alert) continue;
     const { id } = alert;
+    const prevId = lastShownId ? lastShownId[kind] : undefined;
     if (dismissed && dismissed[id]) continue;
+    if (prevId !== id && previousRunning(prevId, kind, nowHourKey)) {
+      const cont = { ...alert, continuation: true, continues: prevId };
+      if (dismissed && dismissed[prevId]) inherited.push(cont);
+      else out.push(cont);
+      continue;
+    }
     const shownAt = lastShown ? lastShown[kind] : undefined;
     const inCooldown =
       typeof shownAt === 'number' && nowMs - shownAt < ALERT_RULES.cooldownHours * HOUR_MS;
-    if (inCooldown && !(lastShownId && lastShownId[kind] === id)) continue;
+    if (inCooldown && prevId !== id) continue;
     out.push(alert);
   }
-  return out.sort((a, b) => b.priority - a.priority);
+  out.sort((a, b) => b.priority - a.priority);
+  return { alerts: out, inherited };
+}
+
+/**
+ * Evaluate all alert rules against a view model.
+ * Extra fields beyond the documented contract: `value` (rounded rain % or
+ * temperature drop), used by `headline`; `continuation`/`continues` on
+ * continuations (see `evaluateAlertsDetailed`).
+ * @param {Object|null} vm View model from `toViewModel`.
+ * @param {Object} opts
+ * @param {Object<string, string>} [opts.dismissed={}] Dismissed alert ids (id -> truthy).
+ * @param {Object<string, number>} [opts.lastShown={}] kind -> epoch ms the kind was first shown (cooldown start).
+ * @param {Object<string, string>} [opts.lastShownId={}] kind -> id of the event last shown.
+ * @param {number} opts.nowMs Current epoch ms (injected).
+ * @returns {Array<{id: string, kind: string, startsAt: string, title: string, detail: string, priority: number, value: number, continuation?: boolean, continues?: string}>}
+ *   Alerts, highest priority first.
+ */
+export function evaluateAlerts(vm, opts = {}) {
+  return evaluateAlertsDetailed(vm, opts).alerts;
 }
 
 /**

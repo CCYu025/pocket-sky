@@ -44,3 +44,13 @@ test("alert and stale together are joined in one message", () => {
   const a = createAnnouncer();
   assert.equal(a.next({ status: "stale", vm, alert: alert("x:2026-11-21T16:00", "T") }), `T。${STALE_TEXT}`);
 });
+
+test("a continuation (same event moved) is silent, and is not announced again afterwards", () => {
+  const a = createAnnouncer();
+  assert.equal(a.next({ status: "ready", vm, alert: alert("rainJump:2026-11-21T16:00") }), "16:00 起可能下雨");
+  const moved = { ...alert("rainJump:2026-11-21T15:00", "15:00 起可能下雨"), continuation: true, continues: "rainJump:2026-11-21T16:00" };
+  assert.equal(a.next({ status: "ready", vm, alert: moved }), null);
+  const settled = { ...moved, continuation: undefined, continues: undefined };
+  assert.equal(a.next({ status: "ready", vm, alert: settled }), null);
+  assert.equal(a.next({ status: "ready", vm, alert: alert("rainJump:2026-11-21T20:00", "20:00 起可能下雨") }), "20:00 起可能下雨");
+});

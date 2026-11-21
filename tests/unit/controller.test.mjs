@@ -418,3 +418,27 @@ test("GPS jitter within the same 2-dp cache key does not reload or flash loading
   await c.refresh({ relocate: true });
   assert.ok(seen.includes("loading"));
 });
+
+test("alert continuation: a moved event stays visible without restarting the cooldown; a dismissed one stays dismissed", async () => {
+  const rainy = dayForecast((f) => [10, 40, 70, 65].forEach((v, i) => (f.hourly.precipitation_probability[38 + i] = v)));
+  const prev = "rainJump:2026-11-21T17:00"; // earlier forecast put the rain an hour later
+  const ctx = setup({ forecast: rainy });
+  ctx.storage.setItem(ALERTS_KEY, JSON.stringify({ dismissed: {}, lastShown: { rainJump: NOW - 600e3 }, lastShownId: { rainJump: prev } }));
+  const c = await make(ctx);
+  await c.init();
+  assert.equal(c.store.get().alert.id, "rainJump:2026-11-21T16:00");
+  assert.equal(c.store.get().alert.continuation, true);
+  const stored = JSON.parse(ctx.storage.getItem(ALERTS_KEY));
+  assert.equal(stored.lastShownId.rainJump, "rainJump:2026-11-21T16:00");
+  assert.equal(stored.lastShown.rainJump, NOW - 600e3);
+
+  __resetInflight();
+  const ctx2 = setup({ forecast: rainy });
+  ctx2.storage.setItem(ALERTS_KEY, JSON.stringify({ dismissed: { [prev]: true }, lastShown: { rainJump: NOW - 600e3 }, lastShownId: { rainJump: prev } }));
+  const c2 = await make(ctx2);
+  await c2.init();
+  assert.equal(c2.store.get().alert, null);
+  const s2 = JSON.parse(ctx2.storage.getItem(ALERTS_KEY));
+  assert.equal(s2.dismissed["rainJump:2026-11-21T16:00"], true);
+  assert.equal(s2.lastShownId.rainJump, "rainJump:2026-11-21T16:00");
+});

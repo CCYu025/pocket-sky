@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ALERT_RULES, evaluateAlerts, pickAlert } from '../../js/rules/alerts.js';
+import { ALERT_RULES, evaluateAlerts, evaluateAlertsDetailed, pickAlert } from '../../js/rules/alerts.js';
 
 const NOW = Date.UTC(2026, 10, 21, 6, 20); // arbitrary fixed instant
 const H = 3600e3;
@@ -135,7 +135,87 @@ test('dismissing one event does not hide a different event of the same kind', ()
 test('cooldown applies between different events of a kind; the same event is exempt', () => {
   const shown = { lastShown: { rainJump: NOW - H }, lastShownId: { rainJump: 'rainJump:2026-11-21T15:00' } };
   assert.equal(ev(makeVm({ rain: { 1: 80 } }), shown).length, 1, 're-render of the same event');
-  assert.equal(ev(makeVm({ rain: { 3: 80 } }), shown).length, 0, 'new event inside cooldown');
-  const later = { lastShown: { rainJump: NOW - 3 * H }, lastShownId: shown.lastShownId };
+  assert.equal(ev(makeVm({ rain: { 3: 80 } }), shown)[0].continuation, true, 'ongoing event moved: continuation, not a new event');
+  const ended = { lastShown: { rainJump: NOW - H }, lastShownId: { rainJump: 'rainJump:2026-11-21T10:00' } };
+  assert.equal(ev(makeVm({ rain: { 3: 80 } }), ended).length, 0, 'new event inside cooldown');
+  const later = { lastShown: { rainJump: NOW - 3 * H }, lastShownId: ended.lastShownId };
   assert.equal(ev(makeVm({ rain: { 3: 80 } }), later).length, 1, 'new event after cooldown');
+});
+
+// ---- continuation of an ongoing event (N1) ----
+/** vm whose hour 0 is `startH:00`; temps/rains are arrays from hour 0. */
+function vmAt(startH, temps, rains) {
+  const key = (h) => `2026-11-21T${String(h).padStart(2, '0')}:00`;
+  return {
+    hoursAvailable: true,
+    now: { hourKey: key(startH) },
+    hours: temps.map((t, i) => ({ hourKey: key(startH + i), hour: startH + i, temp: t, rainProb: rains[i] })),
+  };
+}
+const flat = [0, 0, 0, 0, 0];
+
+test('continuation: sliding temp-drop minimum stays visible across 14:20 -> 15:20 -> 16:20', () => {
+  const all = [24, 22, 20, 18, 16, 14, 12, 10];
+  let st = { dismissed: {}, lastShown: {}, lastShownId: {} };
+  const ids = [];
+  for (let k = 0; k < 3; k++) {
+    const nowMs = NOW + k * H;
+    const { alerts } = evaluateAlertsDetailed(vmAt(14 + k, all.slice(k, k + 5), flat), { ...st, nowMs });
+    assert.equal(alerts.length, 1, `step ${k} visible`);
+    ids.push(alerts[0].id);
+    st = {
+      ...st,
+      lastShown: { ...st.lastShown, [alerts[0].kind]: st.lastShown[alerts[0].kind] ?? nowMs },
+      lastShownId: { ...st.lastShownId, [alerts[0].kind]: alerts[0].id },
+    };
+  }
+  assert.deepEqual(ids, ['tempDrop:2026-11-21T17:00', 'tempDrop:2026-11-21T18:00', 'tempDrop:2026-11-21T19:00']);
+});
+
+test('continuation flags: new id of a running kind is a continuation; first and identical ids are not', () => {
+  const vm = vmAt(15, [24, 22, 20, 18], [0, 0, 0, 0]);
+  const base = { nowMs: NOW + H, lastShown: { tempDrop: NOW }, dismissed: {} };
+  const [c] = evaluateAlerts(vm, { ...base, lastShownId: { tempDrop: 'tempDrop:2026-11-21T17:00' } });
+  assert.equal(c.continuation, true);
+  assert.equal(c.continues, 'tempDrop:2026-11-21T17:00');
+  const [same] = evaluateAlerts(vm, { ...base, lastShownId: { tempDrop: c.id } });
+  assert.ok(!same.continuation);
+  const [first] = evaluateAlerts(vm, { nowMs: NOW });
+  assert.ok(!first.continuation);
+});
+
+test('continuation: rain revised 16:00 -> 15:00 stays visible (cooldown not restarted)', () => {
+  const vm = vmAt(14, [20, 20, 20, 20], [10, 80, 80, 70]);
+  const out = evaluateAlerts(vm, {
+    nowMs: NOW + 20 * 60e3,
+    lastShown: { rainJump: NOW },
+    lastShownId: { rainJump: 'rainJump:2026-11-21T16:00' },
+  });
+  assert.equal(out.length, 1);
+  assert.equal(out[0].id, 'rainJump:2026-11-21T15:00');
+});
+
+test('continuation: dismissed then revised stays hidden, and the new id is reported as inherited-dismissed', () => {
+  const vm = vmAt(14, [20, 20, 20, 20], [10, 80, 80, 70]);
+  const r = evaluateAlertsDetailed(vm, {
+    nowMs: NOW + 60e3,
+    dismissed: { 'rainJump:2026-11-21T16:00': true },
+    lastShown: { rainJump: NOW },
+    lastShownId: { rainJump: 'rainJump:2026-11-21T16:00' },
+  });
+  assert.equal(r.alerts.length, 0);
+  assert.equal(r.inherited.length, 1);
+  assert.equal(r.inherited[0].id, 'rainJump:2026-11-21T15:00');
+  assert.equal(r.inherited[0].continues, 'rainJump:2026-11-21T16:00');
+});
+
+test('new event 4 h after the previous one ended is shown; within 3 h of its first display it is suppressed', () => {
+  // previous event started 10:00 (ended: now hour 14 > 10 + 3 window)
+  const vm = vmAt(14, [20, 20, 20, 20], [10, 10, 70, 70]);
+  const prev = { rainJump: 'rainJump:2026-11-21T10:00' };
+  const shown = evaluateAlerts(vm, { nowMs: NOW, lastShown: { rainJump: NOW - 4 * H }, lastShownId: prev });
+  assert.equal(shown.length, 1);
+  assert.ok(!shown[0].continuation);
+  const suppressed = evaluateAlerts(vm, { nowMs: NOW, lastShown: { rainJump: NOW - 2 * H }, lastShownId: prev });
+  assert.equal(suppressed.length, 0);
 });

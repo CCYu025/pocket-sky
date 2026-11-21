@@ -23,7 +23,7 @@ export function createAnnouncer() {
       const nowStale = hasVm && state.status === "stale";
       const nowError = state?.status === "error";
       const msgs = [];
-      if (nowAlertId && nowAlertId !== alertId) msgs.push(state.alert.title);
+      if (nowAlertId && nowAlertId !== alertId && !(alertId && state.alert.continuation)) msgs.push(state.alert.title);
       if (nowStale && !stale) msgs.push(STALE_TEXT);
       if (nowError && !error) msgs.push(ERROR_TEXT);
       alertId = nowAlertId;

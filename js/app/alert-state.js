@@ -62,10 +62,11 @@ export function writeAlertState(storage, state) {
 
 /**
  * Record that an alert is being shown. The cooldown clock starts only on the
- * first display of an id, so re-renders do not extend it.
+ * first display of an event: a continuation (same kind, previous event not
+ * ended; `alert.continuation`) replaces `lastShownId` but keeps `lastShown`.
  * @param {Storage|undefined} storage
  * @param {object} state Current state (from `readAlertState`).
- * @param {{id: string, kind: string}} alert
+ * @param {{id: string, kind: string, continuation?: boolean}} alert
  * @param {number} nowMs
  * @returns {object} The updated state (also persisted when it changed).
  */
@@ -73,7 +74,28 @@ export function recordShown(storage, state, alert, nowMs) {
   if (state.lastShownId[alert.kind] === alert.id) return state;
   const next = {
     ...state,
-    lastShown: { ...state.lastShown, [alert.kind]: nowMs },
+    lastShown: alert.continuation && typeof state.lastShown[alert.kind] === "number"
+      ? state.lastShown
+      : { ...state.lastShown, [alert.kind]: nowMs },
+    lastShownId: { ...state.lastShownId, [alert.kind]: alert.id },
+  };
+  writeAlertState(storage, next);
+  return next;
+}
+
+/**
+ * Record a continuation whose predecessor was dismissed: the new id is
+ * dismissed too and becomes `lastShownId` (cooldown untouched).
+ * @param {Storage|undefined} storage
+ * @param {object} state Current state.
+ * @param {{id: string, kind: string}} alert
+ * @returns {object} Updated state (persisted).
+ */
+export function recordInheritedDismissal(storage, state, alert) {
+  if (state.dismissed[alert.id] && state.lastShownId[alert.kind] === alert.id) return state;
+  const next = {
+    ...state,
+    dismissed: { ...state.dismissed, [alert.id]: true },
     lastShownId: { ...state.lastShownId, [alert.kind]: alert.id },
   };
   writeAlertState(storage, next);

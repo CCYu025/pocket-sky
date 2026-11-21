@@ -6,8 +6,8 @@
 import { createStore } from "../store.js";
 import { cacheKey } from "../cache.js";
 import { toViewModel } from "../domain/derive.js";
-import { evaluateAlerts, pickAlert } from "../rules/alerts.js";
-import { readAlertState, recordShown, recordDismissed } from "./alert-state.js";
+import { evaluateAlertsDetailed, pickAlert } from "../rules/alerts.js";
+import { readAlertState, recordShown, recordDismissed, recordInheritedDismissal } from "./alert-state.js";
 
 /** Fallback location (Taichung). */
 export const DEFAULT_LOCATION = Object.freeze({ lat: 24.16, lon: 120.64 });
@@ -54,7 +54,9 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
     const nowMs = now();
     const date = String(vm.now.hourKey).slice(0, 10);
     let st = readAlertState(storage, date, nowMs);
-    const alert = pickAlert(evaluateAlerts(vm, { ...st, nowMs }));
+    const { alerts, inherited } = evaluateAlertsDetailed(vm, { ...st, nowMs });
+    for (const a of inherited) st = recordInheritedDismissal(storage, st, a);
+    const alert = pickAlert(alerts);
     if (alert) recordShown(storage, st, alert, nowMs);
     return alert;
   }

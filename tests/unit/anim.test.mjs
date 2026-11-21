@@ -40,3 +40,11 @@ test("revisiting the route with the same alert does not shake", () => {
   const r = t.next(today({ alertId: "a:2026-11-21T16:00" }));
   assert.deepEqual([r.shake, r.restartShake], [false, false]);
 });
+
+test("a continuation alert id does not restart the shake", () => {
+  const t = createAnimTracker();
+  assert.equal(t.next({ route: "today", hasData: true, alertId: "a:1" }).restartShake, true);
+  assert.equal(t.next({ route: "today", hasData: true, alertId: "a:2", continuation: true }).restartShake, false);
+  assert.equal(t.next({ route: "today", hasData: true, alertId: "a:2" }).restartShake, false);
+  assert.equal(t.next({ route: "today", hasData: true, alertId: "a:9" }).restartShake, true);
+});

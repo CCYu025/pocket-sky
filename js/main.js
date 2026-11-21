@@ -107,6 +107,7 @@ function render() {
     route,
     hasData: route === "today" && Boolean(state.vm) && (state.status === "ready" || state.status === "stale"),
     alertId: state.alert && state.vm ? state.alert.id : null,
+    continuation: Boolean(state.alert?.continuation),
   });
 
   if (route === "outing") renderOuting(root);

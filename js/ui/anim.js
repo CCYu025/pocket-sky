@@ -8,9 +8,9 @@
 
 /**
  * Create a tracker.
- * @returns {{next: (o: {route: string, hasData: boolean, alertId: (string|null)}) => {boot: boolean, shake: boolean, restartShake: boolean}}}
+ * @returns {{next: (o: {route: string, hasData: boolean, alertId: (string|null), continuation?: boolean}) => {boot: boolean, shake: boolean, restartShake: boolean}}}
  *   `boot`: the root should carry the `boot` class; `shake`: the root should carry `data-shake`;
- *   `restartShake`: a new alert id appeared, so restart the shake animation now.
+ *   `restartShake`: a new alert id appeared (not a continuation of the shown event), so restart the shake animation now.
  */
 export function createAnimTracker() {
   let route = null;
@@ -18,7 +18,7 @@ export function createAnimTracker() {
   let shakeActive = false;
   let shakenId = null;
   return {
-    next({ route: r, hasData, alertId }) {
+    next({ route: r, hasData, alertId, continuation = false }) {
       if (r !== route) {
         route = r; // a new route visit: boot may run again, a running shake is dropped
         booted = false;
@@ -26,10 +26,13 @@ export function createAnimTracker() {
       }
       if (r === "today" && hasData) booted = true;
       let restartShake = false;
+      const hadAlert = shakenId !== null;
       if (alertId && alertId !== shakenId && r === "today") {
         shakenId = alertId;
-        shakeActive = true;
-        restartShake = true;
+        if (!(continuation && hadAlert)) {
+          shakeActive = true;
+          restartShake = true;
+        }
       }
       if (!alertId) shakeActive = false;
       return { boot: booted, shake: shakeActive, restartShake };
