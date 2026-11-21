@@ -65,6 +65,8 @@ test("day: headline, LCD labels, metrics and sun row match the fixture", async (
 
   assert.equal(await page.locator(".sun-row").innerText().then((t) => t.replace(/\s+/g, " ")), "日出 06:16 還有 2 時 49 分天黑 日落 17:09");
   assert.equal(await page.locator(".daybar").getAttribute("aria-valuenow"), "74");
+  assert.equal(await page.locator(".daybar").getAttribute("aria-label"), "日照已過");
+  assert.equal(await page.locator(".daybar").evaluate((el) => el.classList.contains("daybar--night")), false);
 
   // hourly bars: 8, first labelled 現在
   assert.equal(await page.locator(".bar").count(), 8);
@@ -176,7 +178,17 @@ test("night: auto theme at 20:30 with countdown to sunrise", async () => {
   assert.equal(await theme(page), "night");
   assert.equal(await page.locator('meta[name="theme-color"]').getAttribute("content"), "#141414");
   assert.equal(await page.locator(".sun-row").innerText().then((t) => t.replace(/\s+/g, " ")), "日出 06:16 距日出 9 時 46 分 日落 17:09");
-  assert.equal(await page.locator(".daybar").getAttribute("aria-valuenow"), "100");
+  // night progress: (20:30 - 17:09) / (06:16 + 24 h - 17:09) = 201 / 787
+  const nightPct = String(Math.round((201 / 787) * 100));
+  assert.equal(await page.locator(".daybar").getAttribute("aria-label"), "夜間已過");
+  assert.equal(await page.locator(".daybar").getAttribute("aria-valuenow"), nightPct);
+  assert.equal(await page.locator(".daybar > div").evaluate((el) => el.style.getPropertyValue("--pct")), nightPct);
+  const nightBar = await page.locator(".daybar > div").evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { cls: el.parentElement.className, img: cs.backgroundImage, ink: cs.backgroundColor };
+  });
+  assert.match(nightBar.cls, /daybar--night/);
+  assert.match(nightBar.img, /repeating-linear-gradient/, "night bar is hatched");
   assert.equal(await page.locator('.clock [role="img"]').getAttribute("aria-label"), "時間 20:30");
   assert.equal(await page.locator('.temp [role="img"]').getAttribute("aria-label"), "氣溫 16 度");
   const vm = toViewModel({ forecast: nightForecast(), air: airFixture(), nowMs: NIGHT_MS });

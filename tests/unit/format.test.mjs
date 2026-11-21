@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   compassZh, uvBand, aqiBand, humidityWord, intText, deltaText, dateLabel, clockOf, clockAt,
-  daylightPercent, countdownText, hm,
+  daylightPercent, daylightProgress, countdownText, hm,
 } from "../../js/ui/format.js";
 
 test("compassZh maps 16 points and wraps", () => {
@@ -80,4 +80,16 @@ test("countdownText: before sunset, at night after sunset, before sunrise", () =
   assert.equal(countdownText(vmAt("2026-11-21T04:00")), "距日出 2 時 16 分");
   assert.equal(countdownText(vmAt("2026-11-21T06:16")), "還有 10 時 53 分天黑");
   assert.equal(countdownText({ now: {}, today: {} }), null);
+});
+
+test("daylightProgress: day fraction by day, night fraction (sunset -> next sunrise) by night", () => {
+  assert.deepEqual(daylightProgress(vmAt("2026-11-21T14:20")), { phase: "day", pct: 74 });
+  assert.deepEqual(daylightProgress(vmAt("2026-11-21T06:16")), { phase: "day", pct: 0 });
+  // night: sunset 17:09, next sunrise 06:16 + 24 h => 787 min
+  assert.deepEqual(daylightProgress(vmAt("2026-11-21T17:09")), { phase: "night", pct: 0 });
+  assert.deepEqual(daylightProgress(vmAt("2026-11-21T20:30")), { phase: "night", pct: Math.round((201 / 787) * 100) });
+  // before sunrise: previous sunset = today's sunset - 24 h, elapsed 05:00 - (17:09 - 24 h) = 711 min
+  assert.deepEqual(daylightProgress(vmAt("2026-11-21T05:00")), { phase: "night", pct: Math.round((711 / 787) * 100) });
+  assert.equal(daylightProgress(vmAt("2026-11-21T23:59")).pct, Math.round((410 / 787) * 100));
+  assert.equal(daylightProgress({ now: {}, today: {} }), null);
 });

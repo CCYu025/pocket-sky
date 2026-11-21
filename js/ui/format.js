@@ -138,6 +138,29 @@ export function daylightPercent(vm) {
 }
 
 /**
+ * Progress for the sun bar: daylight elapsed by day, night elapsed by night.
+ * Night runs from sunset to the next sunrise (today's sunrise + 24 h); before
+ * sunrise it runs from the previous sunset (today's sunset - 24 h).
+ * @param {{now?: {minuteKey?: string}, today?: {sunrise?: string, sunset?: string}}} vm
+ * @returns {{phase: 'day'|'night', pct: number}|null} Integer percent 0-100; null when data is missing or sunset <= sunrise.
+ */
+export function daylightProgress(vm) {
+  const now = vm?.now?.minuteKey;
+  const rise = vm?.today?.sunrise;
+  const set = vm?.today?.sunset;
+  if (!now || !rise || !set) return null;
+  const dayLen = minutesUntil(rise, set);
+  const sinceRise = minutesUntil(rise, now);
+  const sinceSet = minutesUntil(set, now);
+  if (!Number.isFinite(dayLen) || !Number.isFinite(sinceRise) || !Number.isFinite(sinceSet) || dayLen <= 0) return null;
+  const clamp = (v) => Math.round(Math.min(100, Math.max(0, v)));
+  if (sinceRise >= 0 && sinceSet < 0) return { phase: "day", pct: clamp((sinceRise / dayLen) * 100) };
+  const nightLen = 1440 - dayLen;
+  const done = sinceSet >= 0 ? sinceSet : sinceSet + 1440;
+  return { phase: "night", pct: clamp((done / nightLen) * 100) };
+}
+
+/**
  * "X 時 Y 分" text for a minute count.
  * @param {number} minutes Non-negative minutes.
  * @returns {string}

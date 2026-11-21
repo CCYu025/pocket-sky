@@ -55,3 +55,15 @@ for (const [name, t] of [["day", day], ["night", night]]) {
     assert.ok(r >= 3, `${name}: fill --${fill} on track --${track} = ${r.toFixed(2)}`);
   });
 }
+
+for (const [name, t] of [["day", day], ["night", night]]) {
+  test(`night progress hatch stripes vs track >= 3:1 (${name})`, () => {
+    const m = /\.daybar--night > div\s*\{([^}]*)\}/.exec(appCss);
+    assert.ok(m, "night rule exists");
+    const stripe = /repeating-linear-gradient\([^)]*var\(--([\w-]+)\)\s+0/.exec(m[1]);
+    const track = ruleBg(".daybar");
+    assert.ok(stripe && track);
+    const r = ratio(t[stripe[1]], t[track]);
+    assert.ok(r >= 3, `${name}: stripe --${stripe[1]} on track --${track} = ${r.toFixed(2)}`);
+  });
+}

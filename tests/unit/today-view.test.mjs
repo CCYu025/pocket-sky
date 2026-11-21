@@ -87,3 +87,14 @@ test("index.html CSP: no 'unsafe-inline' styles; fonts hosts only in style-src/f
   assert.match(dir("connect-src"), /api\.open-meteo\.com/);
   assert.match(dir("connect-src"), /air-quality-api\.open-meteo\.com/);
 });
+
+test("daylight bar: night label and class after sunset, day label by day", () => {
+  const mk = (minuteKey) => {
+    const v = vm();
+    return todayHtml({ status: "ready", vm: { ...v, now: { ...v.now, minuteKey } }, alert: null, notice: null, fetchedAt: NOW }, ui);
+  };
+  const night = mk(`${vm().today.sunset.slice(0, 11)}23:00`);
+  assert.match(night, /class="daybar daybar--night"[^>]*aria-label="夜間已過"/);
+  const day = mk(`${vm().today.sunrise.slice(0, 11)}12:00`);
+  assert.match(day, /class="daybar"[^>]*aria-label="日照已過"/);
+});

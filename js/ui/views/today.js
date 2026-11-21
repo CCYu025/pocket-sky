@@ -8,7 +8,7 @@ import { morphHtml } from "../morph.js";
 import { headline } from "../../domain/summary.js";
 import {
   compassZh, uvBand, aqiBand, humidityWord, intText, deltaText, dateLabel, clockOf, clockAt,
-  daylightPercent, countdownText,
+  daylightProgress, countdownText,
 } from "../format.js";
 
 const BAR_COUNT = 8;
@@ -111,10 +111,12 @@ function rainBars(vm) {
 function sun(vm) {
   const rise = vm ? clockOf(vm.today.sunrise) : null;
   const set = vm ? clockOf(vm.today.sunset) : null;
-  const pct = vm ? daylightPercent(vm) : null;
+  const prog = vm ? daylightProgress(vm) : null;
+  const pct = prog ? prog.pct : null;
+  const night = prog?.phase === "night";
   const text = vm ? countdownText(vm) : null;
   return `<section class="card sun" data-k="sun" aria-label="日出日落"><div class="sun-row"><span>日出 ${esc(rise ?? "--:--")}</span><span>${esc(text ?? "--")}</span><span>日落 ${esc(set ?? "--:--")}</span></div>
-<div class="daybar" role="progressbar" aria-label="日照已過" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct ?? 0}"${pct === null ? ' aria-valuetext="無資料"' : ""}><div data-pct="${pct ?? 0}"></div></div></section>`;
+<div class="daybar${night ? " daybar--night" : ""}" role="progressbar" aria-label="${night ? "夜間已過" : "日照已過"}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct ?? 0}"${pct === null ? ' aria-valuetext="無資料"' : ""}><div data-pct="${pct ?? 0}"></div></div></section>`;
 }
 
 /**
