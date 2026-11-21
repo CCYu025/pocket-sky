@@ -194,7 +194,15 @@ export async function shot(page, name, { fullPage = true } = {}) {
   mkdirSync(SHOTS, { recursive: true });
   const file = path.join(SHOTS, `${name}.png`);
   await settle(page);
-  await page.screenshot({ path: file, animations: "disabled", fullPage });
+  // A sticky nav would be pinned to the first viewport in a full-page capture (covering content,
+  // leaving a gap at the real bottom): lay it out in flow for the capture only.
+  const setNavPosition = (v) => page.evaluate((pos) => { const n = document.querySelector(".nav"); if (n) n.style.position = pos; }, v);
+  if (fullPage) await setNavPosition("static");
+  try {
+    await page.screenshot({ path: file, animations: "disabled", fullPage });
+  } finally {
+    if (fullPage) await setNavPosition("");
+  }
   return file;
 }
 
