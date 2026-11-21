@@ -175,7 +175,7 @@ test("commute: rainy evening drives !RAIN on BACK, umbrella + jacket, leg attrib
   assert.deepEqual(items.map((i) => ({ on: i.on, why: i.why, tags: i.tags })), model.items.map((i) => ({ on: i.on, why: i.why, tags: i.tags })));
   assert.equal(items[0].why, "18:00 降雨機率 60%（≥ 40% 建議）");
   assert.deepEqual(items[0].tags, ["回家 18:00・降雨 60%"], "umbrella: only the BACK leg, with its own value");
-  assert.match(items[1].tags[0], /^出門 08:00・體感 \d+°$/, "jacket: both legs are cold, each tag shows its own value");
+  assert.match(items[1].tags[0], /^明日 出門 08:00・體感 \d+°$/, "jacket: both legs are cold, each tag shows its own value");
   assert.equal(items[1].tags[1], "回家 18:00・體感 14°");
   assert.equal(items[1].tags.length, 2);
   assert.equal(items[2].why, "通勤時段不在 10–15 時", "08:00 / 18:00 are outside the UV window");
@@ -216,8 +216,8 @@ test("commute: a tomorrow OUT leg: BACK first on the LCD, 明早 headline, 明�
   assert.equal(norm(await page.locator('[data-k="leg-back"] .leg-top').innerText()), "BACK");
   const items = await checklist(page);
   assert.equal(items[0].why, "明日 08:00 降雨機率 60%（≥ 40% 建議）");
-  assert.deepEqual(items[0].tags, ["出門 08:00・降雨 60%"]);
-  assert.equal(items[1].tags[0], "出門 08:00・體感 16°");
+  assert.deepEqual(items[0].tags, ["明日 出門 08:00・降雨 60%"]);
+  assert.equal(items[1].tags[0], "明日 出門 08:00・體感 16°");
   noErrors(app);
 });
 
@@ -642,8 +642,8 @@ test("no horizontal overflow at 390px; focus is never hidden behind the sticky n
   const cases = [
     ["commute-rain", "#outing/commute", { forecast: rainyEveningForecast() }, 4],
     ["commute-night", "#outing/commute", { forecast: rainyEveningForecast(), storage: NIGHT_PREF }, 4],
-    ["exercise-day", "#outing/exercise", { forecast: dayForecast() }, 14],
-    ["exercise-late", "#outing/exercise", { forecast: lateForecast(), now: LATE_UTC }, 13],
+    ["exercise-day", "#outing/exercise", { forecast: dayForecast() }, 6],
+    ["exercise-late", "#outing/exercise", { forecast: lateForecast(), now: LATE_UTC }, 6],
   ];
   for (const [name, hash, opts, min] of cases) {
     const app = await open(opts);
@@ -663,9 +663,9 @@ test("no horizontal overflow at 390px; focus is never hidden behind the sticky n
         await page.keyboard.press("Tab");
         const r = await page.evaluate(() => {
           const el = document.activeElement;
-          if (!el || el === document.body) return null;
+          if (!el || el === document.body || el.matches('main#view[tabindex="-1"]')) return null;
           const b = el.getBoundingClientRect();
-          return { what: el.id || el.className || el.tagName, top: b.top, bottom: b.bottom, navTop: document.querySelector(".nav").getBoundingClientRect().top, inNav: Boolean(el.closest(".nav")), inMain: Boolean(el.closest("main")), y: window.scrollY };
+          return { what: el.id || el.className || el.tagName, top: b.top, bottom: b.bottom, navTop: document.querySelector(".nav").getBoundingClientRect().top, inNav: Boolean(el.closest(".nav")), inMain: Boolean(el.closest("main, footer")), y: window.scrollY };
         });
         if (!r || r.inNav) break;
         if (!r.inMain) continue;
@@ -673,7 +673,7 @@ test("no horizontal overflow at 390px; focus is never hidden behind the sticky n
         scrolled = Math.max(scrolled, r.y);
         assert.ok(r.bottom <= r.navTop + 0.5 && r.top >= -0.5, `${name}@${height}: ${r.what} focused at ${r.top}-${r.bottom}, nav top ${r.navTop}`);
       }
-      assert.ok(count >= min, `${name}@${height}: tabbed through ${count} controls in <main>`);
+      assert.ok(count >= min, `${name}@${height}: tabbed through ${count} controls in <main> and the footer`);
       if (height === 480) assert.ok(scrolled > 0, `${name}@480: the page scrolled to reach focus`);
       await noOverflow(page, `${name}@${height}`);
     }
@@ -817,3 +817,97 @@ for (const [name, hash, opts] of [
     await axeCheck(name, app);
   });
 }
+
+// ---------------------------------------------------------------- N1 attribution / N5 roving tabindex
+
+/** Open-Meteo link: exactly one, outside <main>, 44px, visible above the nav after scrolling to the end. */
+async function assertAttribution(page, what) {
+  const link = page.locator("a.attribution");
+  assert.equal(await link.count(), 1, `${what}: exactly one attribution link`);
+  assert.equal(await link.getAttribute("href"), "https://open-meteo.com/", what);
+  assert.equal(await link.innerText(), "Weather data by Open-Meteo.com", what);
+  assert.equal(await page.evaluate(() => Boolean(document.querySelector("a.attribution").closest("main, #view"))), false, `${what}: outside #view`);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const r = await page.evaluate(() => {
+    const a = document.querySelector("a.attribution").getBoundingClientRect();
+    const n = document.querySelector(".nav").getBoundingClientRect();
+    const mid = document.elementFromPoint(a.left + a.width / 2, a.top + a.height / 2);
+    return { top: a.top, bottom: a.bottom, h: a.height, navTop: n.top, hit: mid?.closest("a.attribution") !== null };
+  });
+  assert.ok(r.h >= 44, `${what}: height ${r.h}`);
+  assert.ok(r.top >= 0 && r.bottom <= r.navTop + 0.5, `${what}: above the nav ${JSON.stringify(r)}`);
+  assert.equal(r.hit, true, `${what}: not covered by anything`);
+  await link.focus();
+  const obscured = await page.evaluate(() => {
+    const el = document.activeElement;
+    const b = el.getBoundingClientRect();
+    const n = document.querySelector(".nav").getBoundingClientRect();
+    return b.bottom > n.top + 0.5 || b.top < -0.5;
+  });
+  assert.equal(obscured, false, `${what}: focused link not obscured`);
+}
+
+test("N1: the Open-Meteo attribution is present on Today and both Outing scenarios, in every state", async () => {
+  const app = await open({});
+  for (const hash of ["#today", "#outing/commute", "#outing/exercise"]) {
+    await visit(app, hash);
+    await assertAttribution(app.page, `${hash} ready`);
+  }
+  noErrors(app);
+
+  const loading = await open({});
+  loading.mode.forecast = "hang";
+  for (const hash of ["#outing/commute", "#outing/exercise", "#today"]) {
+    await loading.go(hash);
+    await loading.page.locator("main").waitFor();
+    await assertAttribution(loading.page, `${hash} loading`);
+  }
+  noErrors(loading);
+
+  const err = await open({ expectedErrors: [/status of 500/] });
+  err.mode.forecast = "500";
+  for (const hash of ["#outing/commute", "#outing/exercise", "#today"]) {
+    await err.go(hash);
+    await err.page.locator('[data-action="retry"]').waitFor();
+    await assertAttribution(err.page, `${hash} error`);
+  }
+  noErrors(err);
+});
+
+test("N5: exercise bars use a roving tabindex; Tab goes bar group -> slider", async () => {
+  const app = await open({ forecast: dayForecast() });
+  const { page } = app;
+  await visit(app, "#outing/exercise");
+  const tabindexes = () => page.$$eval(".xbar", (els) => els.map((e) => e.getAttribute("tabindex")));
+  const check = async (what) => {
+    const t = await tabindexes();
+    const sel = await pressedIndex(page);
+    assert.deepEqual(t, t.map((_, i) => (i === sel ? "0" : "-1")), `${what}: only the selected bar is a tab stop`);
+  };
+  await check("initial");
+  // Tab order inside main: exactly one bar stop, then the slider
+  await page.locator(".best").focus();
+  const stops = [];
+  for (let i = 0; i < 4; i++) {
+    await page.keyboard.press("Tab");
+    stops.push(await page.evaluate(() => document.activeElement.id || document.activeElement.className));
+  }
+  assert.equal(stops.filter((s) => s.startsWith("slot-")).length, 1, JSON.stringify(stops));
+  assert.ok(stops[0].startsWith("slot-"), "the selected bar is the first stop after 最佳");
+  assert.equal(stops[1], "x-range", "Tab from the bar goes to the slider");
+  // arrows / Home / End move selection and focus, tabindex follows
+  await page.locator('.xbar[aria-pressed="true"]').focus();
+  for (const key of ["ArrowLeft", "ArrowRight", "End", "Home"]) {
+    await page.keyboard.press(key);
+    await check(key);
+    assert.equal(await page.evaluate(() => document.activeElement.getAttribute("aria-pressed")), "true", `${key}: focus on the selected bar`);
+  }
+  // click and slider keep it in sync too
+  await page.locator(".xbar").nth(5).click();
+  await check("click");
+  await page.locator("#x-range").fill("2");
+  await check("slider");
+  await page.locator(".best").click();
+  await check("best key");
+  noErrors(app);
+});
