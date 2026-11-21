@@ -7,6 +7,7 @@ import {
   buildForecastUrl, buildAirQualityUrl, buildGeocodingUrl,
   getForecast, getAirQuality, searchPlaces,
 } from '../../js/api/openmeteo.js';
+import { addHours } from '../../js/time.js';
 
 const TAICHUNG = { lat: 24.16, lon: 120.64 };
 const SUN_MOON_LAKE = { lat: 23.86, lon: 120.91 };
@@ -62,6 +63,8 @@ function assertForecastShape(f, label) {
   assert.equal(f.hourly.time.length, 72, `${label}: hourly.time length`);
   assert.equal(f.daily.time.length, 3, `${label}: daily.time length`);
   assert.equal(f.minutely_15.time.length, 288, `${label}: minutely_15.time length`);
+  // hourly starts at 00:00 of the local day before current.time's date
+  assert.equal(f.hourly.time[0], addHours(`${f.current.time.slice(0, 10)}T00:00`, -24), `${label}: hourly.time[0]`);
 }
 
 test('forecast: single location has every requested field', async () => {
@@ -102,12 +105,22 @@ function assertAirShape(a, label) {
   assert.ok(a.current, `${label}: missing current`);
   for (const k of AIR_PARAMS.current) assert.ok(k in a.current, `${label}: current.${k} missing (got: ${Object.keys(a.current).join(', ')})`);
   assertSection(a, 'hourly', AIR_PARAMS.hourly, label);
+  assert.equal(a.hourly.time.length, 120, `${label}: air hourly.time length`);
 }
 
 test('air quality: single location shape', async () => {
   const body = await fj(buildAirQualityUrl([TAICHUNG]));
   assert.ok(!Array.isArray(body), 'single-location air quality is a plain object');
   assertAirShape(body, 'air');
+});
+
+test('air quality hourly is joined to forecast by hourKey (not index-aligned in general)', async (t) => {
+  const [f] = await getForecast([TAICHUNG], { fetchImpl: (u, o) => fetchWithRetry(u, o), timeoutMs: 20000 });
+  const air = await fj(buildAirQualityUrl([TAICHUNG]));
+  const airKeys = new Set(air.hourly.time);
+  const matches = f.hourly.time.filter((k) => airKeys.has(k)).length;
+  t.diagnostic(`air.hourly.time[0]=${air.hourly.time[0]} forecast.hourly.time[0]=${f.hourly.time[0]} hourKey matches=${matches}`);
+  assert.ok(matches >= 24, `expected >= 24 hourKey matches, got ${matches}`);
 });
 
 test('air quality: multi-location behaviour and shape', async (t) => {
@@ -135,17 +148,17 @@ test('geocoding: Chinese and English search (informational counts)', async (t) =
     assert.equal(typeof p.lat, 'number');
     assert.equal(typeof p.lon, 'number');
   }
-  assert.ok(await fetchJson(buildGeocodingUrl('台中'), { timeoutMs: 20000 }).then(() => true), 'raw geocoding request succeeds');
+  assert.ok(await fj(buildGeocodingUrl('台中')).then(() => true), 'raw geocoding request succeeds');
 });
 
 test('error path: invalid parameter -> HTTP 400 with reason and ApiError', async () => {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=24.16&longitude=120.64&hourly=not_a_field`;
-  const res = await fetch(url);
+  const res = await fetchWithRetry(url);
   assert.equal(res.status, 400, 'expected HTTP 400 for invalid hourly field');
   const body = await res.json();
   assert.equal(body.error, true);
   assert.equal(typeof body.reason, 'string');
-  await assert.rejects(fetchJson(url, { timeoutMs: 20000 }), (err) => {
+  await assert.rejects(fj(url), (err) => {
     assert.ok(err instanceof ApiError, 'must be ApiError');
     assert.equal(err.name, 'ApiError');
     assert.equal(err.status, 400);
@@ -159,7 +172,7 @@ async function fetchWithRetry(url, opts) {
   for (let i = 0; ; i++) {
     try {
       const res = await fetch(url, opts);
-      if (res.status === 429 && i < 3) { await sleep(4000 * (i + 1)); continue; }
+      if ((res.status === 429 || res.status >= 500) && i < 3) { await sleep(4000 * (i + 1)); continue; }
       return res;
     } catch (err) {
       if (i >= 3) throw err;
