@@ -37,3 +37,21 @@ for (const [name, t] of [["day", day], ["night", night]]) {
     }
   });
 }
+
+// Non-text contrast: the daylight progress fill must read against its track (WCAG 1.4.11, >= 3:1).
+const appCss = readFileSync(new URL("../../css/app.css", import.meta.url), "utf8");
+function ruleBg(selector) {
+  const m = new RegExp(`${selector.replace(/[>.]/g, "\\$&")}\\s*\\{([^}]*)\\}`).exec(appCss);
+  const bg = m && /background:\s*var\(--([\w-]+)\)/.exec(m[1]);
+  return bg ? bg[1] : null;
+}
+
+for (const [name, t] of [["day", day], ["night", night]]) {
+  test(`daylight bar fill vs track >= 3:1 (${name})`, () => {
+    const track = ruleBg(".daybar");
+    const fill = ruleBg(".daybar > div");
+    assert.ok(track && fill, `daybar rules declare token backgrounds (track=${track}, fill=${fill})`);
+    const r = ratio(t[fill], t[track]);
+    assert.ok(r >= 3, `${name}: fill --${fill} on track --${track} = ${r.toFixed(2)}`);
+  });
+}

@@ -83,6 +83,90 @@ test("day: headline, LCD labels, metrics and sun row match the fixture", async (
   noErrors(app);
 });
 
+/** The three bottom keys are fully inside the first screen (no scrolling). */
+async function assertNavInViewport(page, label) {
+  const r = await page.evaluate(() => ({
+    h: window.innerHeight,
+    y: window.scrollY,
+    keys: [...document.querySelectorAll(".nav .key")].map((k) => {
+      const b = k.getBoundingClientRect();
+      return { t: k.textContent.trim(), top: b.top, bottom: b.bottom, left: b.left, right: b.right };
+    }),
+  }));
+  assert.equal(r.y, 0, `${label}: not scrolled`);
+  assert.equal(r.keys.length, 3, `${label}: three keys`);
+  for (const k of r.keys) {
+    assert.ok(k.top >= 0 && k.bottom <= r.h && k.left >= 0 && k.right <= 390, `${label}: ${k.t} inside viewport (${JSON.stringify(k)} of ${r.h})`);
+  }
+}
+
+test("bottom nav (LIGHT / 今天 / 外出) is inside the 390x844 viewport in every state", async () => {
+  const ready = await open({});
+  await ready.go();
+  await waitReady(ready.page);
+  await assertNavInViewport(ready.page, "ready");
+  const full = await ready.page.evaluate(() => document.documentElement.scrollHeight);
+  assert.ok(full > 844, "page is taller than the viewport, so the nav must be sticky");
+  // still pinned after scrolling, and the last content is not covered by it
+  await ready.page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const nav = await ready.page.locator(".nav").boundingBox();
+  const attr = await ready.page.locator("a.attribution").boundingBox();
+  assert.ok(nav.y + nav.height <= 844 + 0.5 && attr.y + attr.height <= nav.y + 0.5, `attribution ${JSON.stringify(attr)} above nav ${JSON.stringify(nav)}`);
+  noErrors(ready);
+
+  const alert = await open({ forecast: rainyForecast() });
+  await alert.go();
+  await waitReady(alert.page);
+  await assertNavInViewport(alert.page, "alert");
+  noErrors(alert);
+
+  const err = await open({ expectedErrors: [/status of 500/] });
+  err.mode.forecast = "500";
+  await err.go();
+  await err.page.locator('[data-action="retry"]').waitFor();
+  await assertNavInViewport(err.page, "error");
+
+  const loading = await open({});
+  loading.mode.forecast = "hang";
+  await loading.go();
+  await loading.page.locator(".hero").waitFor();
+  await assertNavInViewport(loading.page, "loading");
+
+  const outing = await open({});
+  await outing.go("#outing");
+  await outing.page.getByText("外出規劃：M3 開發中").waitFor();
+  await assertNavInViewport(outing.page, "outing");
+  const bg = await outing.page.locator(".nav").evaluate((el) => getComputedStyle(el).backgroundColor);
+  assert.equal(bg, "rgb(255, 247, 214)", "nav paints --shell so content never shows through");
+  assert.equal(await outing.page.locator(".nav").evaluate((el) => getComputedStyle(el).position), "sticky");
+});
+
+test("attribution link is a 44px target; daylight bar fill contrasts with its track in both themes", async () => {
+  const app = await open({});
+  const { page } = app;
+  await app.go();
+  await waitReady(page);
+  const box = await page.locator("a.attribution").boundingBox();
+  assert.ok(box.height >= 44, `attribution height ${box.height}`);
+  const lum = (rgb) => {
+    const c = rgb.match(/\d+/g).slice(0, 3).map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const contrast = async () => {
+    const [fill, track] = await page.evaluate(() => [
+      getComputedStyle(document.querySelector(".daybar > div")).backgroundColor,
+      getComputedStyle(document.querySelector(".daybar")).backgroundColor,
+    ]);
+    const [hi, lo] = [lum(fill), lum(track)].sort((a, b) => b - a);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  assert.ok((await contrast()) >= 3, `day contrast ${await contrast()}`);
+  await page.locator('[data-action="light"]').click();
+  assert.equal(await theme(page), "night");
+  assert.ok((await contrast()) >= 3, `night contrast ${await contrast()}`);
+  noErrors(app);
+});
+
 test("night: auto theme at 20:30 with countdown to sunrise", async () => {
   const app = await open({ forecast: nightForecast(), now: NIGHT_UTC });
   const { page } = app;
@@ -332,7 +416,10 @@ test("geolocation granted uses the device position; denied falls back with a not
   await denied.go();
   await waitReady(denied.page);
   assert.equal(await denied.page.locator("#loc-btn").innerText().then((t) => t.replace(/\s+/g, " ")), "臺中（預設） ▾");
-  assert.equal(await denied.page.locator(".notice").innerText(), "使用預設地點：臺中");
+  // the notice is not repeated as a visible line; it lives in the button's accessible name
+  assert.equal(await denied.page.locator(".notice").count(), 0);
+  assert.equal(await denied.page.getByText("使用預設地點：臺中").count(), 0);
+  assert.equal(await denied.page.locator("#loc-btn").getAttribute("aria-label"), "臺中（預設），使用預設地點：臺中，重新定位");
   assert.ok(denied.requests.some((u) => /latitude=24\.16&longitude=120\.64/.test(u)));
   noErrors(denied);
 });

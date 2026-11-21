@@ -130,7 +130,6 @@ export function todayHtml(state, ui) {
   else title = headline(vm, alert);
 
   const parts = [`<h1 class="headline">${esc(title)}</h1>`];
-  if (state.notice) parts.push(`<p class="notice">${esc(state.notice)}</p>`);
   if (alert && hasVm) {
     parts.push(
       `<div class="alert" role="status"><span class="alert-text">${esc(alert.title)}・${esc(alert.detail)}</span><button type="button" class="alert-close" data-action="dismiss-alert" aria-label="關閉提醒">×</button></div>`,
