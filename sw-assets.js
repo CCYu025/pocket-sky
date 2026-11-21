@@ -45,4 +45,4 @@ self.SW_ASSETS = [
   "js/ui/views/trip.js",
   "manifest.webmanifest"
 ];
-self.SW_VERSION = "727a672070bc";
+self.SW_VERSION = "2afb43b64375";
