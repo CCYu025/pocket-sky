@@ -104,7 +104,7 @@ test("readLast/writeLast never throw and validate", () => {
 
 // ---- js/theme-boot.js (classic script run before the stylesheets) ----
 const BOOT = readFileSync(new URL("../../js/theme-boot.js", import.meta.url), "utf8");
-function boot({ items = {}, throwing = false, meta = true } = {}) {
+function boot({ items = {}, throwing = false, meta = true, nowMs } = {}) {
   const metaEl = { content: "#FFF7D6", setAttribute(k, v) { if (k === "content") this.content = v; } };
   const doc = {
     documentElement: { dataset: {} },
@@ -112,8 +112,13 @@ function boot({ items = {}, throwing = false, meta = true } = {}) {
   };
   const win = {};
   if (throwing) Object.defineProperty(win, "localStorage", { get() { throw new Error("SecurityError"); } });
-  else win.localStorage = { getItem: (k) => (k in items ? items[k] : null) };
-  nodeVm.runInNewContext(BOOT, { window: win, document: doc });
+  else {
+    const keys = Object.keys(items);
+    win.localStorage = { getItem: (k) => (k in items ? items[k] : null), get length() { return keys.length; }, key: (i) => keys[i] ?? null };
+  }
+  const ctx = { window: win, document: doc };
+  if (nowMs !== undefined) ctx.Date = class extends Date { static now() { return nowMs; } };
+  nodeVm.runInNewContext(BOOT, ctx);
   return { theme: doc.documentElement.dataset.theme, color: metaEl.content };
 }
 
@@ -136,4 +141,46 @@ test("theme-boot: nothing known leaves the default; garbage is ignored; never th
   assert.doesNotThrow(() => boot({ items: { "ps:theme-last": "night" }, meta: false }));
   assert.equal(boot({ items: { "ps:theme-last": "night" }, meta: false }).theme, "night");
   assert.doesNotThrow(() => nodeVm.runInNewContext(BOOT, {}), "no window/document at all");
+});
+
+// ---- theme-boot: auto resolves day/night from the cached forecast before ps:theme-last ----
+const CACHE_KEY = "om:v1:forecast:24.15,120.67";
+const entry = (value, savedAt = 1000) => JSON.stringify({ value, savedAt, ttlMs: 900000 });
+const forecast = (extra = {}) => ({
+  utc_offset_seconds: 28800,
+  current: { is_day: 1 },
+  daily: { time: ["2026-11-20", "2026-11-21", "2026-11-22"], sunrise: ["2026-11-20T06:15", "2026-11-21T06:16", "2026-11-22T06:17"], sunset: ["2026-11-20T17:09", "2026-11-21T17:09", "2026-11-22T17:08"] },
+  ...extra,
+});
+// local 2026-11-21 20:30 = 12:30Z; local 2026-11-22 08:00 = 2026-11-22T00:00Z; local 2026-11-21 14:20 = 06:20Z
+const NIGHT_MS = Date.UTC(2026, 10, 21, 12, 30);
+const MORNING_MS = Date.UTC(2026, 10, 22, 0, 0);
+
+test("theme-boot: morning after a night session uses the cached sunrise, not ps:theme-last", () => {
+  const items = { [CACHE_KEY]: entry(forecast()), "ps:theme-last": "night" };
+  assert.equal(boot({ items, nowMs: MORNING_MS }).theme, "day");
+});
+
+test("theme-boot: night with a cached forecast stays night (even if theme-last says day)", () => {
+  const items = { [CACHE_KEY]: entry(forecast()), "ps:theme-last": "day" };
+  assert.deepEqual(boot({ items, nowMs: NIGHT_MS }), { theme: "night", color: THEME_COLORS.night });
+  assert.equal(boot({ items, nowMs: Date.UTC(2026, 10, 21, 6, 20) }).theme, "day");
+});
+
+test("theme-boot: the latest savedAt wins; a missing date falls back to current.is_day", () => {
+  const old = forecast({ daily: { time: ["2026-11-21"], sunrise: ["2026-11-21T20:00"], sunset: ["2026-11-21T21:00"] } });
+  const items = { "om:v1:forecast:1.00,1.00": entry(old, 5), [CACHE_KEY]: entry(forecast(), 50) };
+  assert.equal(boot({ items, nowMs: Date.UTC(2026, 10, 21, 6, 20) }).theme, "day");
+  const noDate = forecast({ current: { is_day: 0 } });
+  assert.equal(boot({ items: { [CACHE_KEY]: entry(noDate) }, nowMs: Date.UTC(2027, 0, 5, 6, 0) }).theme, "night");
+});
+
+test("theme-boot: no usable cache falls back to theme-last; corrupt cache never throws", () => {
+  assert.equal(boot({ items: { "ps:theme-last": "night" }, nowMs: MORNING_MS }).theme, "night");
+  for (const bad of ["{not json", "null", JSON.stringify({ savedAt: 1 }), entry({ daily: 5 }), entry(null), entry({})]) {
+    const items = { [CACHE_KEY]: bad, "ps:theme-last": "night" };
+    assert.doesNotThrow(() => boot({ items, nowMs: MORNING_MS }));
+    assert.equal(boot({ items, nowMs: MORNING_MS }).theme, "night", bad);
+  }
+  assert.equal(boot({ items: { [CACHE_KEY]: entry(forecast()), "ps:theme": "night" }, nowMs: MORNING_MS }).theme, "night", "explicit pref still wins");
 });
