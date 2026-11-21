@@ -1,0 +1,38 @@
+/* Design tokens: direction A "digital-watch shell x inset LCD". See docs/ARCHITECTURE.md. */
+:root {
+  --shell: #fff7d6;
+  --ink: #000000;
+  --sub: #3d3a33;
+  --card: #ffffff;
+  --line: #000000;
+  --lcd: #b7c3a3;
+  --lcd-glow: inset 0 3px 0 rgba(0, 0, 0, 0.22);
+  --lcd-ink: #1e2618;
+  --lcd-ghost: rgba(30, 38, 24, 0.09);
+  --accent: #ffd23f;
+  --on-accent: #000000;
+  --alert: #ff6b9a;
+  --on-alert: #000000;
+  --rain: #7dd3fc;
+
+  --border: 3px solid var(--line);
+  --sh: 4px 4px 0 var(--line);
+  --sh-big: 6px 6px 0 var(--line);
+
+  --font-zh: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", "WenQuanYi Zen Hei", sans-serif;
+  --font-mono: "Share Tech Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  color-scheme: light;
+}
+
+[data-theme="night"] {
+  --shell: #141414;
+  --ink: #f5f0e0;
+  --sub: #c9c2b0;
+  --card: #1f1f1f;
+  --line: #ffd23f;
+  --lcd: #8fe3cc;
+  --lcd-glow: 0 0 22px rgba(143, 227, 204, 0.45), inset 0 3px 0 rgba(0, 0, 0, 0.22);
+
+  color-scheme: dark;
+}
