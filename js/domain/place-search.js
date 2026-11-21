@@ -9,6 +9,8 @@ import { placeFromSearchResult } from "../app/places-state.js";
 export const MAX_RESULTS = 8;
 /** UI hint when a CJK query finds nothing (no dictionary is used to invent an English query). */
 export const SEARCH_HINT = "試試英文名稱，例如 Taichung";
+/** Second hint line for the empty result state. */
+export const SEARCH_HINT_SUFFIX = "或加上「市」，例如 花蓮市";
 
 const TAIWAN = new Set(["臺灣", "台灣", "台湾", "Taiwan"]);
 
@@ -21,17 +23,36 @@ export function isTaiwan(r) {
   return TAIWAN.has(r?.country);
 }
 
+/** Maximum number of query variants tried. */
+export const MAX_VARIANTS = 4;
+const CJK_RE = /[\u3400-\u9fff]/;
+const ADMIN_SUFFIX_RE = /[市縣鄉鎮區]$/;
+
 /**
- * Ordered unique query variants: the input with `台` replaced by `臺` first (when it contains
- * `台`), then the trimmed input.
+ * Swap the 台/臺 spelling: a query containing `台` gets `臺`, otherwise `臺` becomes `台`
+ * (the geocoder matches only one spelling per city: `臺中市` but `台北市`).
+ * @param {string} t
+ * @returns {string}
+ */
+function swapTai(t) {
+  return t.includes("台") ? t.replaceAll("台", "臺") : t.replaceAll("臺", "台");
+}
+
+/**
+ * Ordered unique query variants, at most `MAX_VARIANTS`: the trimmed input, its 台/臺-swapped
+ * spelling and, for a CJK query that does not already end in 市/縣/鄉/鎮/區, both of those with
+ * `市` appended (`台中` → `台中`, `臺中`, `台中市`, `臺中市`). The live geocoder only matches full
+ * names with their administrative suffix, so a bare city name needs the `市` variants.
  * @param {string} q
  * @returns {string[]} `[]` for an empty or whitespace query.
  */
 export function searchVariants(q) {
   const t = typeof q === "string" ? q.trim() : "";
   if (!t) return [];
-  const out = t.includes("台") ? [t.replaceAll("台", "臺"), t] : [t];
-  return [...new Set(out)];
+  const sw = swapTai(t);
+  const out = [t, sw];
+  if (CJK_RE.test(t) && !ADMIN_SUFFIX_RE.test(t)) out.push(`${t}市`, `${sw}市`);
+  return [...new Set(out)].slice(0, MAX_VARIANTS);
 }
 
 /**
