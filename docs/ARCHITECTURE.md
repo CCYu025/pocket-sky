@@ -104,3 +104,57 @@ Air quality query (`AIR_PARAMS`): `current=us_aqi,pm2_5`, `hourly=us_aqi,pm2_5`,
 ## Known limitations
 
 - Entries older than maxStaleMs wait up to timeoutMs for the network before the stale fallback is shown; M2 UI shows a loading state.
+
+## M2 — Today screen (UI)
+
+### Design system (direction A: "digital-watch shell × inset LCD")
+Tokens live in `css/tokens.css` as CSS custom properties; `[data-theme="night"]` on `<html>` overrides them.
+
+| token | day | night |
+|---|---|---|
+| `--shell` (page bg) | `#FFF7D6` | `#141414` |
+| `--ink` (text) | `#000000` | `#F5F0E0` |
+| `--sub` (secondary text) | `#3D3A33` | `#C9C2B0` |
+| `--card` | `#FFFFFF` | `#1F1F1F` |
+| `--line` (borders, hard shadows) | `#000000` | `#FFD23F` |
+| `--lcd` (LCD glass) | `#B7C3A3` | `#8FE3CC` (backlight) |
+| `--lcd-glow` | `inset 0 3px 0 rgba(0,0,0,.22)` | `0 0 22px rgba(143,227,204,.45), inset 0 3px 0 rgba(0,0,0,.22)` |
+| `--lcd-ink` / `--lcd-ghost` | `#1E2618` / `rgba(30,38,24,.09)` | same |
+| `--accent` (primary) | `#FFD23F` | same |
+| `--alert` | `#FF6B9A` (text on it is `#000`) | same |
+| `--rain` (functional) | `#7DD3FC` | same |
+
+- Borders 3px solid `--line`; hard shadows only two levels: `4px 4px 0` (rest) and `6px 6px 0` (hero); pressed = translate(4px,4px) + no shadow. Radius 0 (LCD inner glass 4px).
+- Fonts (Google Fonts): Noto Sans TC 500/900 for all Chinese text; Share Tech Mono for system labels (`LIGHT`, `SA 11-21`, `UPD 14:15`). 7-segment digits ONLY for primary values (time, current temperature), height ≥ 32px (time may be 24px inside LCD as secondary).
+- Motion: at most ONE infinite animation per screen (Today: the clock colon blink, 1s steps). One-shot entry animations: LCD boot flicker (0.9s), alert shake (0.5s, once), rain bars grow (0.6s, staggered 80ms). Only `transform`/`opacity` are animated. `prefers-reduced-motion: reduce` disables all of them. Pause infinite animations when `document.hidden`.
+- Touch targets ≥ 44px. Text contrast ≥ 4.5:1 in both themes.
+- Visual reference: the approved wireframe "A1 今天" (structure: top bar with brand + location button → one-line headline → alert bar (only when an alert exists) → hero LCD (date, clock, big temp, condition / feels / max-min, Δ yesterday, updated time) → 5 metric cards + "更多" → hourly rain bars (8) → sunrise/sunset with daylight progress → attribution link → bottom keys LIGHT / 今天 / 外出).
+
+### `js/ui/seg7.js`
+- `SEGMENTS`: `{ '0':'abcdef', '1':'bc', '2':'abdeg', '3':'abcdg', '4':'bcfg', '5':'acdfg', '6':'acdefg', '7':'abc', '8':'abcdefg', '9':'abcdfg', '-':'g', ' ':'' }`.
+- `seg7Svg(text, { height = 48, label })` → HTML string: `<span class="seg7" role="img" aria-label="{label ?? text}">` + one `<svg class="seg7-digit" viewBox="0 0 56 100" width="{round(height*0.56)}" height="{height}" aria-hidden="true">` per char with seven `<polygon class="seg seg-{a..g} {on|off}">`; `:` renders `<span class="seg7-colon" aria-hidden="true"><i></i><i></i></span>`; unknown chars render as blank digits. Label is HTML-escaped. Pure; no DOM access.
+- Polygon points (viewBox 56×100): a `10,6 16,0 40,0 46,6 40,12 16,12`; b `50,10 56,16 56,40 50,46 44,40 44,16`; c `50,54 56,60 56,84 50,90 44,84 44,60`; d `10,94 16,88 40,88 46,94 40,100 16,100`; e `6,54 12,60 12,84 6,90 0,84 0,60`; f `6,10 12,16 12,40 6,46 0,40 0,16`; g `10,50 16,44 40,44 46,50 40,56 16,56`.
+- CSS: `.seg.on{fill:var(--lcd-ink)} .seg.off{fill:var(--lcd-ghost)}`; `.seg7{display:inline-flex;gap:…;transform:skewX(-6deg)}`.
+
+### `js/rules/alerts.js` (pure)
+- `ALERT_RULES = { rainJump: { windowHours: 3, fromMax: 30, toMin: 60 }, tempDrop: { windowHours: 3, minDrop: 4 }, cooldownHours: 3 }`.
+- `evaluateAlerts(vm, { dismissed = {}, lastShown = {}, nowMs })` → array of `{ id, kind, startsAt, title, detail, priority }`, highest priority first:
+  - `rainJump`: current hour rainProb ≤ fromMax AND some hour within the next `windowHours` has rainProb ≥ toMin → `startsAt` = first such hourKey; title e.g. `15:00 起可能下雨`, detail `降雨機率 70%`.
+  - `tempDrop`: `hours[0].temp − min(temp over next windowHours) ≥ minDrop` → title `氣溫將下降 5°`, detail `{HH}:00 降至 18°`.
+  - `id` = `${kind}:${date}` (one per kind per local day). Drop alerts whose id is in `dismissed`. Drop alerts whose `lastShown[kind]` is within `cooldownHours` of `nowMs` **unless** it is the same id (re-renders must keep showing it).
+  - Returns `[]` when `vm.hoursAvailable` is false.
+- `pickAlert(alerts)` → first or `null` (at most one alert shown).
+
+### `js/domain/summary.js` (pure)
+- `headline(vm, alert)` → short zh-Hant sentence, priority: (1) alert → e.g. `15 時起可能下雨，記得帶傘` / `氣溫將下降 5°，加件外套`; (2) any of next 6 hours rainProb ≥ 40 → `{HH} 時可能下雨，記得帶傘`; (3) `|yesterdayDelta| ≥ 4` → `比昨天冷 4°，加件外套` / `比昨天熱 4°，注意補水`; (4) `今天{label}，{max}° / {min}°`; (5) data unavailable → `資料暫時無法取得`. Numbers rounded to integers.
+
+### App shell
+- `index.html` (lang zh-Hant, viewport, theme-color, Google Fonts preconnect, `<link rel="stylesheet">` to `css/tokens.css` + `css/app.css`, `<script type="module" src="js/main.js">`), all paths relative (GitHub Pages sub-path).
+- `js/main.js`: wires store + cache(localStorage) + api + derive + view. Location: `navigator.geolocation` (timeout 8s, maximumAge 10 min); on denial/unavailable use default Taichung (24.16, 120.64) and show a small notice "使用預設地點：臺中". Hash router: `#today` (default) and `#outing` (placeholder "外出規劃：M3 開發中"). Refresh on load, on the location button, and on `visibilitychange` → visible if the forecast is not fresh. Handles `onUpdate(fresh, { key })` by ignoring keys that are not the current location's key.
+- States the Today view must render: `loading` (LCD shows `--` digits, metrics skeleton; also used for N6 waits), `ready`, `stale` (banner `資料時間 HH:MM・無法更新`), `error` with no data (message + 重試 button).
+- Theme: `localStorage['ps:theme']` ∈ `auto|day|night` (default `auto`). `auto` = night when local time is before today's sunrise or after sunset (from vm.today). LIGHT key toggles day/night explicitly (stored); long-press is not required. Apply via `document.documentElement.dataset.theme` and update `<meta name="theme-color">`.
+- Rendering: views are functions `(root, vm, uiState) → void` that set `innerHTML` from template strings built with an `esc()` helper for every interpolated API string; event handling via delegation on the root. No framework.
+
+### Testing (M2)
+- Unit (node --test): seg7 (segment map for every char, markup structure, escaping, colon), alerts (each rule boundary, cooldown, dismissed, same-id re-render, hoursAvailable=false), summary (each priority branch), theme decision (pure helper `resolveTheme(pref, vm, nowMs)` in `js/ui/theme.js`).
+- E2E (Playwright library + node --test, no @playwright/test): `tests/e2e/*.e2e.mjs`, run via `npm run test:e2e`; tiny static server `tests/e2e/server.mjs`; intercept Open-Meteo with fixtures (plus synthetic rainy/cold scenarios derived in-test); fixed clock via `page.clock`; geolocation granted/denied via context options. Viewport 390×844. Screenshots to `docs/screenshots/m2/` (day, night, reduced-motion, loading, error, stale). axe-core (devDependency) injected per state: 0 serious/critical violations. No console errors.
