@@ -663,6 +663,27 @@ test("motion: one infinite animation on commute (!RAIN), none on exercise; trans
   noErrors(app);
 });
 
+test("motion: both legs rainy still has exactly one infinite animation", async () => {
+  const forecast = dayForecast((f) => {
+    const p = f.hourly.precipitation_probability;
+    for (let i = 0; i < p.length; i++) p[i] = 70;
+  });
+  const app = await open({ forecast });
+  const { page } = app;
+  await visit(app, "#outing/commute");
+  await settle(page);
+  assert.equal(await page.locator(".warn").count(), 2, "both legs show !RAIN");
+  const infinite = () => page.evaluate(() => document.getAnimations().filter((a) => a.effect.getComputedTiming().iterations === Infinity).map((a) => a.animationName));
+  assert.deepEqual(await infinite(), ["blink"], "exactly one infinite animation");
+  assert.equal(await page.locator(".warn--still").count(), 1);
+  assert.equal(await page.locator(".warn--still").evaluate((el) => getComputedStyle(el).animationName), "none");
+  // changing the legs keeps it at one
+  await page.selectOption("#sel-out", "18");
+  await page.selectOption("#sel-back", "19");
+  assert.deepEqual(await infinite(), ["blink"]);
+  noErrors(app);
+});
+
 test("reduced motion: nothing animates on either scenario", async () => {
   const app = await open({ forecast: rainyEveningForecast(), reducedMotion: "reduce" });
   const { page } = app;

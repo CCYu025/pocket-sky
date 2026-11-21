@@ -97,12 +97,14 @@ export function commuteModel(vm, commute) {
  * One LCD leg.
  * @param {object|null} leg From `commuteModel`, or null for the loading skeleton.
  * @param {{key: string, label: string, name: string}} def
+ * @param {boolean} [blink=true] Whether this leg's `!RAIN` is the screen's blinking one; a second
+ *   warning is rendered static (`warn--still`) so only one infinite animation ever runs.
  * @returns {string} HTML.
  */
-function legHtml(leg, def) {
+function legHtml(leg, def, blink = true) {
   const time = leg ? leg.time : "--:--";
   const aria = leg ? leg.aria : `${def.name} 無資料`;
-  const warn = leg?.warn ? `<span class="warn" role="img" aria-label="降雨機率高">!RAIN</span>` : "";
+  const warn = leg?.warn ? `<span class="${blink ? "warn" : "warn warn--still"}" role="img" aria-label="降雨機率高">!RAIN</span>` : "";
   return `<div class="leg" data-k="leg-${def.key}"><div class="leg-top"><span>${def.label}${leg?.tomorrow ? " 明日" : ""}</span>${warn}</div>
 <div class="leg-time">${seg7Svg(time, { height: 36, ghost: true, label: aria })}</div>
 <span class="leg-wx">${esc(leg ? leg.wx : "--")}</span><span class="leg-detail">${esc(leg ? leg.detail : "載入中")}</span></div>`;
@@ -147,7 +149,9 @@ export function commuteHtml(state, ui) {
   let title = "載入天氣中…";
   if (model) title = model.headline;
   else if (status === "error") title = "資料暫時無法取得";
-  const legSlots = model ? model.ordered.map((l) => legHtml(l, l)) : LEGS.map((d) => legHtml(null, d));
+  // only the first !RAIN (in display order) blinks: the screen's single infinite animation
+  const firstWarn = model ? model.ordered.findIndex((l) => l.warn) : -1;
+  const legSlots = model ? model.ordered.map((l, i) => legHtml(l, l, i === firstWarn)) : LEGS.map((d) => legHtml(null, d));
   return [
     `<p class="note" data-k="c-note">${esc(LOCATION_NOTE)}</p>`,
     `<section class="hero" data-k="c-hero" aria-label="通勤時段天氣"><div class="lcd lcd--legs">${legSlots.join("")}</div></section>`,

@@ -210,6 +210,20 @@ test("commuteHtml: structure, labels, note, no inline styles", () => {
   assert.doesNotMatch(html, /undefined|NaN/);
 });
 
+test("m4: both legs rainy -> one blinking !RAIN (the first in display order), the other static", () => {
+  const wet = vmOfHours(synth("2026-11-21", 10, 24, () => ({ rainProb: 70 })));
+  const html = commuteHtml(ready(wet), ui());
+  assert.equal((html.match(/class="warn"/g) || []).length, 1, "exactly one blinking indicator");
+  assert.equal((html.match(/class="warn warn--still"/g) || []).length, 1, "the other is static");
+  assert.equal((html.match(/!RAIN/g) || []).length, 2, "both legs still say !RAIN");
+  // OUT is tomorrow, BACK is today: BACK is displayed first and owns the blink
+  assert.match(html, /data-k="leg-back">[\s\S]*?class="warn"[\s\S]*data-k="leg-out">[\s\S]*class="warn warn--still"/);
+  // one wet leg: blinks as before
+  const one = commuteHtml(ready(vmAt(NOW, rainy)), ui());
+  assert.equal((one.match(/class="warn"/g) || []).length, 1);
+  assert.doesNotMatch(one, /warn--still/);
+});
+
 test("commuteHtml: loading and error skeletons", () => {
   const loading = commuteHtml({ status: "loading", vm: null }, ui());
   assert.match(loading, /載入天氣中/);

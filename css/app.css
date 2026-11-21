@@ -231,6 +231,7 @@ main:focus { outline: none; }
 .leg { display: flex; flex-direction: column; gap: 6px; padding: 0 4px; min-width: 0; }
 .leg-top { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 13px; min-height: 18px; }
 .warn { font-weight: 900; animation: blink 1s steps(1) infinite; } /* the commute screen's one infinite animation */
+.warn--still { animation: none; } /* a second !RAIN stays static: at most one infinite animation per screen */
 .leg-time .seg7 { gap: 3px; }
 .leg-wx { font-size: 17px; font-weight: 900; }
 .leg-detail { font-size: 13px; }
