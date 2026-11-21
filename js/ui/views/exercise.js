@@ -120,7 +120,7 @@ function heroHtml(model, flip) {
 }
 
 /**
- * Bars, `最佳` key, range slider and note.
+ * Bars (roving tabindex: only the selected bar is a tab stop), `最佳` key, range slider and note.
  * @param {object|null} model
  * @param {string} loadingText Text for the empty placeholder.
  * @returns {string} HTML.
@@ -136,7 +136,7 @@ function pickerHtml(model, loadingText) {
     .map((s, i) => {
       const sel = i === model.index;
       const cls = s.level ? ` xbar--${s.level}` : "";
-      return `<div class="xcol" data-k="s-${esc(s.hourKey)}"><button type="button" class="xbar${cls}" id="slot-${esc(s.hourKey)}" data-action="pick-slot" data-hk="${esc(s.hourKey)}" aria-label="${esc(slotLabel(s))}" aria-pressed="${sel}"><span class="xfill" data-p="${s.score ?? 0}" data-i="${i}"></span></button><span class="xt${sel ? " is-sel" : ""}" aria-hidden="true"><b>${pad2(s.hour)}</b>${s.isTomorrow ? "<i>明日</i>" : ""}</span></div>`;
+      return `<div class="xcol" data-k="s-${esc(s.hourKey)}"><button type="button" class="xbar${cls}" id="slot-${esc(s.hourKey)}" data-action="pick-slot" data-hk="${esc(s.hourKey)}" tabindex="${sel ? 0 : -1}" aria-label="${esc(slotLabel(s))}" aria-pressed="${sel}"><span class="xfill" data-p="${s.score ?? 0}" data-i="${i}"></span></button><span class="xt${sel ? " is-sel" : ""}" aria-hidden="true"><b>${pad2(s.hour)}</b>${s.isTomorrow ? "<i>明日</i>" : ""}</span></div>`;
     })
     .join("");
   const cur = model.slot;
