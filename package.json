@@ -10,6 +10,10 @@
   "scripts": {
     "test": "node --test \"tests/unit/**/*.test.mjs\"",
     "test:contract": "node --test \"tests/contract/**/*.test.mjs\"",
-    "fixtures": "node tests/contract/capture-fixtures.mjs"
+    "fixtures": "node tests/contract/capture-fixtures.mjs",
+    "test:e2e": "node --test \"tests/e2e/**/*.e2e.mjs\""
+  },
+  "devDependencies": {
+    "axe-core": "^4.14.1"
   }
 }

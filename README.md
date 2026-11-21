@@ -8,6 +8,7 @@
 ```bash
 npm test               # 單元測試（離線、使用 fixtures）
 npm run test:contract  # 契約測試（呼叫真實 Open-Meteo API）
+npm run test:e2e       # 瀏覽器 E2E（Playwright + axe-core，使用 fixtures）
 npm run fixtures       # 重新擷取 tests/fixtures/
 ```
 
