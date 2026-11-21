@@ -52,15 +52,15 @@ test("why text: on cases show the triggering value, rounded, with the threshold"
   assert.equal(item([H(8, { feels: 20 }), H(9, { feels: 16.4 })], "jacket").why, "09:00 體感 16°（≤ 18° 建議）");
   assert.equal(item([H(8, { temp: 20 }), H(9, { temp: 26.4 })], "jacket").why, "溫差 6°（≥ 6° 建議）");
   assert.equal(item([H(11, { uv: 7.2 })], "sunscreen").why, "11:00 紫外線指數 7（≥ 6 建議）");
-  assert.equal(item([H(8, { aqi: 120 })], "mask").why, "08:00 AQI 120（≥ 100 建議）");
-  assert.equal(item([H(8, { aqi: 50, pm25: 40 })], "mask").why, "08:00 PM2.5 40 µg/m³（≥ 35 建議）");
+  assert.equal(item([H(8, { aqi: 120 })], "mask").why, "空氣品質差（AQI 120）");
+  assert.equal(item([H(8, { aqi: 50, pm25: 40 })], "mask").why, "PM2.5 偏高（40 µg/m³），敏感族群建議戴口罩");
 });
 
 test("why text: off cases give a reassuring reason", () => {
   const hs = [H(8, { rainProb: 10, aqi: 41.6 }), H(9, { rainProb: 25, aqi: 42 })];
   assert.equal(item(hs, "umbrella").why, "降雨機率低（最高 25%）");
   assert.equal(item(hs, "jacket").why, "體感溫暖（最低 22°）");
-  assert.equal(item(hs, "sunscreen").why, "通勤時段紫外線低");
+  assert.equal(item(hs, "sunscreen").why, "通勤時段不在 10–15 時");
   assert.equal(item(hs, "mask").why, "空氣品質良好 AQI 42");
   assert.equal(item([H(8, { aqi: null, pm25: 12 })], "mask").why, "空氣品質良好 PM2.5 12");
 });
@@ -83,13 +83,58 @@ test("null in one condition does not block another; partial data still evaluates
 
 test("null UV inside the window is 資料不足; hours only outside the window are not", () => {
   assert.equal(item([H(12, { uv: null })], "sunscreen").why, "資料不足");
-  assert.equal(item([H(8, { uv: null }), H(18, { uv: null })], "sunscreen").why, "通勤時段紫外線低");
+  assert.equal(item([H(8, { uv: null }), H(18, { uv: null })], "sunscreen").why, "通勤時段不在 10–15 時");
 });
 
 test("hit hourKey identifies the triggering hour (null when off or for range)", () => {
   assert.equal(item([H(8), H(18, { rainProb: 70 })], "umbrella").hourKey, key(18));
   assert.equal(item([H(8)], "umbrella").hourKey, null);
   assert.equal(item([H(8, { temp: 20 }), H(9, { temp: 28 })], "jacket").hourKey, null);
+});
+
+test("sunscreen off reason: no leg hour in 10-15 vs hours in the window with low UV", () => {
+  assert.equal(item([H(8, { uv: 9 }), H(18, { uv: 9 })], "sunscreen").why, "通勤時段不在 10–15 時");
+  assert.equal(item([H(9), H(16)], "sunscreen").why, "通勤時段不在 10–15 時", "bounds 10 and 15 are inclusive, 9 and 16 are outside");
+  assert.equal(item([H(8), H(10, { uv: 5.9 })], "sunscreen").why, "通勤時段紫外線低");
+  assert.equal(item([H(15, { uv: 0 })], "sunscreen").why, "通勤時段紫外線低");
+  assert.equal(item([H(11, { uv: 0 })], "sunscreen").on, false);
+});
+
+test("mask is split: AQI >= 100 vs PM2.5 >= 35 with AQI < 100; result exposes the hit field", () => {
+  const aqi = item([H(8, { aqi: 100, pm25: 50 })], "mask");
+  assert.equal(aqi.on, true);
+  assert.equal(aqi.field, "aqi", "AQI wins when both trigger");
+  assert.equal(aqi.why, "空氣品質差（AQI 100）");
+  const pm = item([H(8, { aqi: 99, pm25: 35 })], "mask");
+  assert.equal(pm.on, true);
+  assert.equal(pm.field, "pm25");
+  assert.equal(pm.why, "PM2.5 偏高（35 µg/m³），敏感族群建議戴口罩");
+  assert.equal(item([H(8, { aqi: 99, pm25: 34.9 })], "mask").on, false);
+  assert.equal(item([H(8)], "mask").field, null);
+});
+
+test("result exposes field, agg and value of the triggering condition (null when off)", () => {
+  const u = item([H(8, { rainProb: 20 }), H(9, { rainProb: 60 })], "umbrella");
+  assert.deepEqual([u.field, u.agg, u.value], ["rainProb", null, 60]);
+  const f = item([H(8, { feels: 16 })], "jacket");
+  assert.deepEqual([f.field, f.value], ["feels", 16]);
+  const r = item([H(8, { temp: 20 }), H(9, { temp: 27 })], "jacket");
+  assert.deepEqual([r.field, r.agg, r.value], ["temp", "range", 7]);
+  const off = item([H(8)], "umbrella");
+  assert.deepEqual([off.field, off.agg, off.value], [null, null, null]);
+});
+
+test("tomorrow hours are prefixed 明日 in the reason when `today` is given", () => {
+  const hs = [H(18, { rainProb: 10 }), H(8, { rainProb: 60, uv: 0, aqi: 120, feels: 15 }, "2026-11-22")];
+  const get = (id) => evaluateChecklist(hs, undefined, { today: "2026-11-21" }).find((i) => i.id === id);
+  assert.equal(get("umbrella").why, "明日 08:00 降雨機率 60%（≥ 40% 建議）");
+  assert.equal(get("jacket").why, "明日 08:00 體感 15°（≤ 18° 建議）");
+  assert.equal(get("mask").why, "空氣品質差（AQI 120）", "no hour in this text");
+  const sun = evaluateChecklist([H(11, { uv: 8 }, "2026-11-22")], undefined, { today: "2026-11-21" }).find((i) => i.id === "sunscreen");
+  assert.equal(sun.why, "明日 11:00 紫外線指數 8（≥ 6 建議）");
+  const today = evaluateChecklist([H(18, { rainProb: 60 })], undefined, { today: "2026-11-21" })[0];
+  assert.equal(today.why, "18:00 降雨機率 60%（≥ 40% 建議）", "today's hours have no prefix");
+  assert.equal(item([H(8, { rainProb: 60 }, "2026-11-22")], "umbrella").why, "08:00 降雨機率 60%（≥ 40% 建議）", "no today: no prefix");
 });
 
 // legHours

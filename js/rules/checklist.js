@@ -40,30 +40,49 @@ function evalCond(cond, hours) {
  * commute legs combined).
  * @param {object[]} hours Entries of `vm.hours`.
  * @param {object[]} [rules] Defaults to `CHECKLIST_RULES`.
- * @returns {{id: string, label: string, on: boolean, why: string, hourKey: string|null}[]}
+ * @param {{today?: string}} [opts] `today` is the local date `YYYY-MM-DD`; when given, a triggering
+ *   hour on another date is shown as `明日 HH:00` in the reason text.
+ * @returns {{id: string, label: string, on: boolean, why: string, hourKey: string|null,
+ *   field: string|null, agg: string|null, value: number|null}[]}
  *   Rule order. `hourKey` is the hour of the triggering value (null when off
- *   or for `range`), so views can attribute an item to a leg. When every value
- *   a rule needs is null (or `hours` is empty), `on` is false and `why` is `資料不足`.
+ *   or for `range`), so views can attribute an item to a leg. `field`, `agg` and `value` describe
+ *   the triggering condition (all null when off), e.g. `{ field: 'feels', agg: 'min', value: 16 }`.
+ *   When every value a rule needs is null (or `hours` is empty), `on` is false and `why` is `資料不足`.
  */
-export function evaluateChecklist(hours, rules = CHECKLIST_RULES) {
+export function evaluateChecklist(hours, rules = CHECKLIST_RULES, { today = null } = {}) {
   const list = Array.isArray(hours) ? hours.filter(Boolean) : [];
   const agg = (f, fn) => {
     const v = list.map((h) => num(h[f])).filter((x) => x !== null);
     return v.length ? fn(v) : null;
   };
+  const off = { hourKey: null, field: null, agg: null, value: null };
   return rules.map((rule) => {
     const res = rule.any.map((c) => evalCond(c, list));
-    const hit = res.map((x) => x.hit).find(Boolean) ?? null;
+    let hit = res.map((x) => x.hit).find(Boolean) ?? null;
     const known = res.some((x) => x.state !== "nodata");
-    if (!hit && (!known || list.length === 0)) return { id: rule.id, label: rule.label, on: false, why: NO_DATA_TEXT, hourKey: null };
+    if (!hit && (!known || list.length === 0)) return { id: rule.id, label: rule.label, on: false, why: NO_DATA_TEXT, ...off };
+    if (hit && hit.hour !== null) {
+      const tomorrow = today !== null && hit.hourKey ? String(hit.hourKey).slice(0, 10) !== today : false;
+      hit = { ...hit, tomorrow };
+    }
     const ctx = {
       on: Boolean(hit),
       hit,
+      hours: list,
       max: (f) => agg(f, (v) => Math.max(...v)),
       min: (f) => agg(f, (v) => Math.min(...v)),
       range: (f) => agg(f, (v) => Math.max(...v) - Math.min(...v)),
     };
-    return { id: rule.id, label: rule.label, on: ctx.on, why: rule.why(ctx), hourKey: hit?.hourKey ?? null };
+    return {
+      id: rule.id,
+      label: rule.label,
+      on: ctx.on,
+      why: rule.why(ctx),
+      hourKey: hit?.hourKey ?? null,
+      field: hit?.field ?? null,
+      agg: hit?.agg ?? null,
+      value: hit?.value ?? null,
+    };
   });
 }
 

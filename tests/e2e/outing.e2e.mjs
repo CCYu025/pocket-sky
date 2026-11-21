@@ -174,9 +174,11 @@ test("commute: rainy evening drives !RAIN on BACK, umbrella + jacket, leg attrib
   assert.equal(items[3].label, "口罩");
   assert.deepEqual(items.map((i) => ({ on: i.on, why: i.why, tags: i.tags })), model.items.map((i) => ({ on: i.on, why: i.why, tags: i.tags })));
   assert.equal(items[0].why, "18:00 降雨機率 60%（≥ 40% 建議）");
-  assert.deepEqual(items[0].tags, ["回家 18:00"], "umbrella: only the BACK leg");
-  assert.deepEqual(items[1].tags, ["出門 08:00", "回家 18:00"], "jacket: both legs are cold");
-  assert.equal(items[2].why, "通勤時段紫外線低");
+  assert.deepEqual(items[0].tags, ["回家 18:00・降雨 60%"], "umbrella: only the BACK leg, with its own value");
+  assert.match(items[1].tags[0], /^出門 08:00・體感 \d+°$/, "jacket: both legs are cold, each tag shows its own value");
+  assert.equal(items[1].tags[1], "回家 18:00・體感 14°");
+  assert.equal(items[1].tags.length, 2);
+  assert.equal(items[2].why, "通勤時段不在 10–15 時", "08:00 / 18:00 are outside the UV window");
   assert.deepEqual(items[2].tags, []);
   // accessible state text for each row
   assert.equal(await page.locator(".check-item").first().locator(".sr-only").textContent(), "，建議攜帶");
@@ -194,6 +196,29 @@ test("commute: rainy evening drives !RAIN on BACK, umbrella + jacket, leg attrib
   await noOverflow(page, "commute rain");
   await shot(page, "commute-rain", { dir: SHOTS_M3 });
   await shot(page, "commute-viewport", { dir: SHOTS_M3, fullPage: false });
+  noErrors(app);
+});
+
+test("commute: a tomorrow OUT leg: BACK first on the LCD, 明早 headline, 明日 in the reason, per-leg tag values", async () => {
+  const forecast = dayForecast((f) => {
+    const h = f.hourly;
+    const i = h.time.indexOf("2026-11-22T08:00");
+    for (const k of [i, i + 1]) {
+      h.precipitation_probability[k] = 60;
+      h.apparent_temperature[k] = 16;
+    }
+  });
+  const app = await open({ forecast });
+  const { page } = app;
+  await visit(app, "#outing/commute");
+  assert.equal(await page.locator("h1").innerText(), "明早出門可能下雨");
+  assert.deepEqual(await page.$$eval(".leg", (els) => els.map((e) => e.dataset.k)), ["leg-back", "leg-out"], "chronological: today's BACK first");
+  assert.equal(norm(await page.locator('[data-k="leg-out"] .leg-top').innerText()), "OUT 明日 !RAIN");
+  assert.equal(norm(await page.locator('[data-k="leg-back"] .leg-top').innerText()), "BACK");
+  const items = await checklist(page);
+  assert.equal(items[0].why, "明日 08:00 降雨機率 60%（≥ 40% 建議）");
+  assert.deepEqual(items[0].tags, ["出門 08:00・降雨 60%"]);
+  assert.equal(items[1].tags[0], "出門 08:00・體感 16°");
   noErrors(app);
 });
 
@@ -232,8 +257,8 @@ test("commute: selectors change the legs and the checklist; persisted; in place"
   await page.selectOption("#sel-out", "12"); // tomorrow noon: warm
   assert.equal(norm(await page.locator('[data-k="leg-out"] .leg-top').innerText()), "OUT 明日");
   const items = await checklist(page);
-  assert.deepEqual(items[0].tags, ["回家 18:00"]);
-  assert.deepEqual(items[1].tags, ["回家 18:00"], "jacket attributed to the BACK leg only");
+  assert.deepEqual(items[0].tags, ["回家 18:00・降雨 60%"]);
+  assert.deepEqual(items[1].tags, ["回家 18:00・體感 14°"], "jacket attributed to the BACK leg only");
   assert.equal(await page.locator("h1").innerText(), "傍晚回家會遇到雨");
 
   await page.selectOption("#sel-out", "14"); // the current hour is today's
@@ -243,7 +268,7 @@ test("commute: selectors change the legs and the checklist; persisted; in place"
   // both legs wet: 18 out, 18 back share the same hours -> both tags and the "both" headline
   await page.selectOption("#sel-out", "18");
   assert.equal(await page.locator("h1").innerText(), "來回都可能下雨");
-  assert.deepEqual((await checklist(page))[0].tags, ["出門 18:00", "回家 18:00"]);
+  assert.deepEqual((await checklist(page))[0].tags, ["出門 18:00・降雨 60%", "回家 18:00・降雨 60%"]);
   assert.equal(await page.locator(".warn").count(), 2);
 
   await page.reload();

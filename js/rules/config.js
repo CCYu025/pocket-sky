@@ -3,9 +3,11 @@
  *
  * `why` of a checklist rule is a function `(ctx) => string` (zh-Hant). `ctx`
  * is built by `evaluateChecklist`: `{ on, hit, max(field), min(field), range(field) }`
- * where `hit` is `{ field, agg, value, hour } | null` (the first matching
- * condition; `hour` is the entry's local hour 0-23 or `null` for `range`) and
- * `max/min/range(field)` give the aggregate over all supplied hours (or `null`).
+ * where `hit` is `{ field, agg, value, hour, tomorrow? } | null` (the first matching
+ * condition; `hour` is the entry's local hour 0-23 or `null` for `range`; `tomorrow` is set
+ * when the evaluator was given today's date and the hour lies on another date),
+ * `hours` is the list of entries evaluated and `max/min/range(field)` give the aggregate
+ * over all supplied hours (or `null`).
  * @module rules/config
  */
 
@@ -26,6 +28,8 @@ export const NO_DATA_TEXT = "資料不足";
 
 const hh = (h) => `${String(h).padStart(2, "0")}:00`;
 const r = (v) => Math.round(v);
+/** `HH:00`, prefixed `明日 ` for a tomorrow hour. */
+const at = (hit) => `${hit.tomorrow ? "明日 " : ""}${hh(hit.hour)}`;
 
 /**
  * @typedef {{ field: string, op: '>='|'<=', value: number, agg?: 'max'|'min'|'range', hours?: [number, number] }} Cond
@@ -42,8 +46,8 @@ export const CHECKLIST_RULES = [
       { field: "rain", op: ">=", value: T.rain },
     ],
     why: (c) => {
-      if (c.on && c.hit.field === "rain") return `${hh(c.hit.hour)} 預估降雨 ${Math.round(c.hit.value * 10) / 10} mm（≥ ${T.rain} mm 建議）`;
-      if (c.on) return `${hh(c.hit.hour)} 降雨機率 ${r(c.hit.value)}%（≥ ${T.rainProb}% 建議）`;
+      if (c.on && c.hit.field === "rain") return `${at(c.hit)} 預估降雨 ${Math.round(c.hit.value * 10) / 10} mm（≥ ${T.rain} mm 建議）`;
+      if (c.on) return `${at(c.hit)} 降雨機率 ${r(c.hit.value)}%（≥ ${T.rainProb}% 建議）`;
       const p = c.max("rainProb");
       return p == null ? "預估無明顯降雨" : `降雨機率低（最高 ${r(p)}%）`;
     },
@@ -56,7 +60,7 @@ export const CHECKLIST_RULES = [
       { agg: "range", field: "temp", op: ">=", value: T.range },
     ],
     why: (c) => {
-      if (c.on && c.hit.field === "feels") return `${hh(c.hit.hour)} 體感 ${r(c.hit.value)}°（≤ ${T.feels}° 建議）`;
+      if (c.on && c.hit.field === "feels") return `${at(c.hit)} 體感 ${r(c.hit.value)}°（≤ ${T.feels}° 建議）`;
       if (c.on) return `溫差 ${r(c.hit.value)}°（≥ ${T.range}° 建議）`;
       const m = c.min("feels");
       return m == null ? "氣溫變化不大" : `體感溫暖（最低 ${r(m)}°）`;
@@ -67,8 +71,9 @@ export const CHECKLIST_RULES = [
     label: "防曬",
     any: [{ field: "uv", op: ">=", value: T.uv, hours: T.uvHours }],
     why: (c) => {
-      if (c.on) return `${hh(c.hit.hour)} 紫外線指數 ${r(c.hit.value)}（≥ ${T.uv} 建議）`;
-      return "通勤時段紫外線低";
+      if (c.on) return `${at(c.hit)} 紫外線指數 ${r(c.hit.value)}（≥ ${T.uv} 建議）`;
+      const [lo, hi] = T.uvHours;
+      return c.hours.some((h) => h.hour >= lo && h.hour <= hi) ? "通勤時段紫外線低" : `通勤時段不在 ${lo}–${hi} 時`;
     },
   },
   {
@@ -79,8 +84,8 @@ export const CHECKLIST_RULES = [
       { field: "pm25", op: ">=", value: T.pm25 },
     ],
     why: (c) => {
-      if (c.on && c.hit.field === "aqi") return `${hh(c.hit.hour)} AQI ${r(c.hit.value)}（≥ ${T.aqi} 建議）`;
-      if (c.on) return `${hh(c.hit.hour)} PM2.5 ${r(c.hit.value)} µg/m³（≥ ${T.pm25} 建議）`;
+      if (c.on && c.hit.field === "aqi") return `空氣品質差（AQI ${r(c.hit.value)}）`;
+      if (c.on) return `PM2.5 偏高（${r(c.hit.value)} µg/m³），敏感族群建議戴口罩`;
       const a = c.max("aqi");
       if (a != null) return `空氣品質良好 AQI ${r(a)}`;
       return `空氣品質良好 PM2.5 ${r(c.max("pm25"))}`;

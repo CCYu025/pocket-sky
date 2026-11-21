@@ -16,6 +16,26 @@ const LEGS = [
   { key: "back", name: "回家", label: "BACK" },
 ];
 
+/**
+ * The triggering value of a checklist item, for a leg tag.
+ * @param {{field: (string|null), agg: (string|null), value: (number|null)}} it
+ * @returns {string} e.g. `體感 16°`, `降雨 60%`, `雨量 0.8 mm`, `溫差 7°`, `UV 8`, `AQI 120`, `PM2.5 41`.
+ */
+function valueText(it) {
+  const v = it.value;
+  const r = Math.round(v);
+  switch (it.field) {
+    case "rainProb": return `降雨 ${r}%`;
+    case "rain": return `雨量 ${Math.round(v * 10) / 10} mm`;
+    case "feels": return `體感 ${r}°`;
+    case "temp": return `溫差 ${r}°`;
+    case "uv": return `UV ${r}`;
+    case "aqi": return `AQI ${r}`;
+    case "pm25": return `PM2.5 ${r}`;
+    default: return "";
+  }
+}
+
 const pad2 = (h) => String(h).padStart(2, "0");
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
@@ -23,11 +43,13 @@ const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
  * Build the commute view model.
  * @param {object} vm Controller view model (`vm.hours` starts at the current hour).
  * @param {{out: number, back: number}} commute Selected leg start hours.
- * @returns {{legs: object[], items: object[], headline: string}}
- *   `legs[i]`: `{ key, name, label, hour, time: 'HH:00', tomorrow, entry, wx, detail, rainMax, warn, aria }`
+ * @returns {{legs: object[], ordered: object[], items: object[], headline: string}}
+ *   `legs` is `[out, back]`; `ordered` is the same legs in chronological order (today's BACK comes
+ *   before tomorrow's OUT) for display. `legs[i]`: `{ key, name, label, hour, time: 'HH:00', tomorrow, entry, wx, detail, rainMax, warn, aria }`
  *   (`entry` is the leg's first hour; the rain figure is the peak over the leg's two hours, which is
- *   what the checklist evaluates). `items[i]`: checklist item plus `tags` (e.g. `回家 18:00`; `來回`
- *   when only both legs together trigger it, e.g. a large temperature range).
+ *   what the checklist evaluates). `items[i]`: checklist item plus `tags`, one per leg that triggers it on
+ *   its own, carrying that leg's own value (`出門 08:00・體感 16°`, `回家 18:00・降雨 60%`); `來回`
+ *   when only both legs together trigger it (a large temperature range across the legs).
  */
 export function commuteModel(vm, commute) {
   const hours = vm?.hours ?? [];
@@ -55,14 +77,20 @@ export function commuteModel(vm, commute) {
       aria: `${tomorrow ? "明日 " : ""}${l.name} ${time}`,
     };
   });
-  const perLeg = legs.map((l) => evaluateChecklist(l.hours));
-  const combined = evaluateChecklist([...legs[0].hours, ...legs[1].hours]);
+  const perLeg = legs.map((l) => evaluateChecklist(l.hours, undefined, { today }));
+  const combined = evaluateChecklist([...legs[0].hours, ...legs[1].hours], undefined, { today });
   const items = combined.map((it, i) => {
-    const tags = legs.filter((l, j) => perLeg[j][i].on).map((l) => `${l.name} ${l.time}`);
+    const tags = legs.flatMap((l, j) => (perLeg[j][i].on ? [`${l.name} ${l.time}・${valueText(perLeg[j][i])}`] : []));
     if (it.on && tags.length === 0) tags.push("來回");
     return { ...it, tags };
   });
-  return { legs, items, headline: commuteHeadline(perLeg[0], perLeg[1], legs[0].hours, legs[1].hours) };
+  const headline = commuteHeadline(perLeg[0], perLeg[1], legs[0].hours, legs[1].hours, {
+    combined,
+    tomorrow: { out: legs[0].tomorrow, back: legs[1].tomorrow },
+  });
+  const [a, b] = legs;
+  const ordered = a.entry && b.entry && String(b.entry.hourKey) < String(a.entry.hourKey) ? [b, a] : [a, b];
+  return { legs, ordered, items, headline };
 }
 
 /**
@@ -119,9 +147,10 @@ export function commuteHtml(state, ui) {
   let title = "載入天氣中…";
   if (model) title = model.headline;
   else if (status === "error") title = "資料暫時無法取得";
+  const legSlots = model ? model.ordered.map((l) => legHtml(l, l)) : LEGS.map((d) => legHtml(null, d));
   return [
     `<p class="note" data-k="c-note">${esc(LOCATION_NOTE)}</p>`,
-    `<section class="hero" data-k="c-hero" aria-label="通勤時段天氣"><div class="lcd lcd--legs">${LEGS.map((d, i) => legHtml(model && model.legs[i], d)).join("")}</div></section>`,
+    `<section class="hero" data-k="c-hero" aria-label="通勤時段天氣"><div class="lcd lcd--legs">${legSlots.join("")}</div></section>`,
     `<div class="fields" data-k="c-fields">${selectHtml(LEGS[0], c.out)}${selectHtml(LEGS[1], c.back)}</div>`,
     `<h1 class="headline headline--sm" data-k="c-headline">${esc(title)}</h1>`,
     status === "error" ? "" : checklistHtml(model ? model.items : null),

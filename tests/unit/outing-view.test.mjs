@@ -48,11 +48,12 @@ test("commuteModel: !RAIN threshold is rainProb >= 40 over either leg hour", () 
 test("commuteModel: leg attribution tags", () => {
   const m = commuteModel(vmAt(NOW, rainy), COMMUTE);
   const by = Object.fromEntries(m.items.map((i) => [i.id, i]));
-  assert.deepEqual(by.umbrella.tags, ["回家 18:00"]);
-  assert.deepEqual(by.jacket.tags, ["出門 08:00", "回家 18:00"]);
+  assert.deepEqual(by.umbrella.tags, ["回家 18:00・降雨 60%"]);
+  assert.match(by.jacket.tags[0], /^出門 08:00・體感 -?\d+°$/);
+  assert.match(by.jacket.tags[1], /^回家 18:00・體感 14°$/);
   assert.deepEqual(by.sunscreen.tags, []);
   const both = commuteModel(vmAt(NOW, rainy), { out: 18, back: 18 });
-  assert.deepEqual(both.items[0].tags, ["出門 18:00", "回家 18:00"]);
+  assert.deepEqual(both.items[0].tags, ["出門 18:00・降雨 60%", "回家 18:00・降雨 60%"]);
   assert.equal(both.headline, "來回都可能下雨");
 });
 
@@ -66,6 +67,122 @@ test("commuteModel: a range-only trigger is attributed to both legs together (�
   const jacket = commuteModel(vm, COMMUTE).items.find((i) => i.id === "jacket");
   assert.equal(jacket.on, true);
   assert.deepEqual(jacket.tags, ["來回"]);
+});
+
+// synthetic hours for the day-word / tag / headline scenarios (fully deterministic)
+const synth = (date, h0, n, f = () => ({})) =>
+  Array.from({ length: n }, (_, i) => {
+    const t = h0 + i;
+    const day = Number(date.slice(8)) + Math.floor(t / 24);
+    const hour = t % 24;
+    const k = `${date.slice(0, 8)}${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:00`;
+    return { hourKey: k, hour, temp: 22, feels: 22, humidity: 50, rainProb: 0, rain: 0, wind: 5, uv: 0, aqi: 30, pm25: 10, code: 0, ...f(hour, k) };
+  });
+const vmOfHours = (hours) => ({ hours, now: { hourKey: hours[0].hourKey } });
+const tomorrowKey = (k) => k.startsWith("2026-11-22");
+
+test("M1: range across legs ticks 外套 and the headline says so (never 來回都舒適)", () => {
+  // 10:30: OUT tomorrow 08-09 at 19 degrees, BACK today 18-19 at 26 degrees
+  const hours = synth("2026-11-21", 10, 24, (h, k) => (tomorrowKey(k) ? { temp: 19, feels: 19 } : { temp: 26, feels: 26 }));
+  const m = commuteModel(vmOfHours(hours), { out: 8, back: 18 });
+  const jacket = m.items.find((i) => i.id === "jacket");
+  assert.equal(jacket.on, true);
+  assert.match(jacket.why, /溫差 7°/);
+  assert.match(m.headline, /外套/);
+  assert.notEqual(m.headline, "來回都舒適");
+  assert.deepEqual(jacket.tags, ["來回"]);
+  const html = commuteHtml(ready(vmOfHours(hours)), ui());
+  assert.match(html, /氣溫偏低，記得帶外套/);
+});
+
+test("M1: headline is consistent with the list for jacket / mask(AQI) / umbrella over many combos", () => {
+  const mk = (o, b) => synth("2026-11-21", 10, 24, (h, k) => (tomorrowKey(k) ? o : b));
+  const combos = [
+    [{ temp: 19, feels: 19 }, { temp: 26, feels: 26 }],
+    [{ temp: 22, feels: 17 }, { temp: 22, feels: 22 }],
+    [{ aqi: 130 }, {}],
+    [{}, { aqi: 130 }],
+    [{ rainProb: 70 }, {}],
+    [{}, {}],
+  ];
+  for (const [o, b] of combos) {
+    const m = commuteModel(vmOfHours(mk(o, b)), { out: 8, back: 18 });
+    const on = (id) => m.items.find((i) => i.id === id).on;
+    if (m.headline === "來回都舒適") assert.ok(!on("umbrella") && !on("jacket") && !(on("mask") && m.items.find((i) => i.id === "mask").field === "aqi"), JSON.stringify([o, b]));
+    if (on("jacket") && !on("umbrella") && !(on("mask") && m.items.find((i) => i.id === "mask").field === "aqi")) assert.match(m.headline, /外套/);
+  }
+});
+
+test("m3: tomorrow leg gets day words in the headline and 明日 in the reason text", () => {
+  const hours = synth("2026-11-21", 10, 24, (h, k) => (tomorrowKey(k) && h === 8 ? { rainProb: 60, feels: 16 } : {}));
+  const m = commuteModel(vmOfHours(hours), { out: 8, back: 18 });
+  assert.equal(m.headline, "明早出門可能下雨");
+  assert.equal(m.items.find((i) => i.id === "umbrella").why, "明日 08:00 降雨機率 60%（≥ 40% 建議）");
+  assert.equal(m.items.find((i) => i.id === "jacket").why, "明日 08:00 體感 16°（≤ 18° 建議）");
+  const eve = synth("2026-11-21", 10, 24, (h, k) => (!tomorrowKey(k) && h === 19 ? { rainProb: 60 } : {}));
+  assert.equal(commuteModel(vmOfHours(eve), { out: 8, back: 19 }).headline, "傍晚回家會遇到雨", "BACK today keeps the plain word (OUT is tomorrow but dry)");
+  const tmBack = synth("2026-11-21", 20, 24, (h, k) => (tomorrowKey(k) && h === 18 ? { rainProb: 60 } : {}));
+  assert.equal(commuteModel(vmOfHours(tmBack), { out: 21, back: 18 }).headline, "明天傍晚回家會遇到雨");
+});
+
+test("m3: legs are shown chronologically (today's BACK before tomorrow's OUT) with their labels", () => {
+  const hours = synth("2026-11-21", 10, 24);
+  const m = commuteModel(vmOfHours(hours), { out: 8, back: 18 });
+  assert.deepEqual(m.legs.map((l) => l.key), ["out", "back"], "model order is stable: out, back");
+  assert.deepEqual(m.ordered.map((l) => l.key), ["back", "out"]);
+  const html = commuteHtml(ready(vmOfHours(hours)), ui());
+  assert.ok(html.indexOf('data-k="leg-back"') < html.indexOf('data-k="leg-out"'), "BACK first in the DOM");
+  assert.match(html, /<span>BACK<\/span>/);
+  assert.match(html, /<span>OUT 明日<\/span>/);
+  // both today: OUT then BACK; both tomorrow: OUT then BACK
+  const today = commuteModel(vmOfHours(synth("2026-11-21", 6, 24)), { out: 8, back: 18 });
+  assert.deepEqual(today.ordered.map((l) => l.key), ["out", "back"]);
+  const late = commuteModel(vmOfHours(synth("2026-11-21", 20, 30)), { out: 8, back: 18 });
+  assert.deepEqual(late.ordered.map((l) => l.key), ["out", "back"]);
+  // loading skeleton keeps the default order
+  const loading = commuteHtml({ status: "loading", vm: null }, ui());
+  assert.ok(loading.indexOf('data-k="leg-out"') < loading.indexOf('data-k="leg-back"'));
+});
+
+test("m3: tags show each leg's own value", () => {
+  const tags = (f, commute = { out: 8, back: 18 }) => {
+    const m = commuteModel(vmOfHours(synth("2026-11-21", 6, 30, f)), commute);
+    return Object.fromEntries(m.items.map((i) => [i.id, i.tags]));
+  };
+  const feels = tags((h, k) => (!tomorrowKey(k) && h === 8 ? { feels: 16 } : h === 18 && !tomorrowKey(k) ? { feels: 14 } : {}));
+  assert.deepEqual(feels.jacket, ["出門 08:00・體感 16°", "回家 18:00・體感 14°"]);
+  const rain = tags((h, k) => (!tomorrowKey(k) && h === 18 ? { rainProb: 60 } : {}));
+  assert.deepEqual(rain.umbrella, ["回家 18:00・降雨 60%"]);
+  const mm = tags((h, k) => (!tomorrowKey(k) && h === 8 ? { rain: 0.84 } : {}));
+  assert.deepEqual(mm.umbrella, ["出門 08:00・雨量 0.8 mm"]);
+  const uv = tags((h) => (h === 11 ? { uv: 8 } : {}), { out: 11, back: 18 });
+  assert.deepEqual(uv.sunscreen, ["出門 11:00・UV 8"]);
+  const aqi = tags((h, k) => (!tomorrowKey(k) && h === 18 ? { aqi: 120 } : {}));
+  assert.deepEqual(aqi.mask, ["回家 18:00・AQI 120"]);
+  const pm = tags((h, k) => (!tomorrowKey(k) && h === 8 ? { pm25: 41.2 } : {}));
+  assert.deepEqual(pm.mask, ["出門 08:00・PM2.5 41"]);
+  const range = tags((h, k) => (!tomorrowKey(k) && h === 8 ? { temp: 20, feels: 20 } : !tomorrowKey(k) && h === 9 ? { temp: 27, feels: 27 } : {}));
+  assert.deepEqual(range.jacket, ["出門 08:00・溫差 7°"], "a range inside one leg shows that leg's range");
+  const swing = tags((h, k) => (!tomorrowKey(k) && h < 12 ? { temp: 20, feels: 20 } : { temp: 27, feels: 27 }));
+  assert.deepEqual(swing.jacket, ["來回"], "only both legs together: 來回 without a value");
+  assert.deepEqual(swing.umbrella, []);
+});
+
+test("n8: sunscreen off reason distinguishes no hour in 10-15 from low UV", () => {
+  const sun = (commute) => commuteModel(vmOfHours(synth("2026-11-21", 6, 30)), commute).items.find((i) => i.id === "sunscreen");
+  assert.equal(sun({ out: 8, back: 18 }).why, "通勤時段不在 10–15 時");
+  assert.equal(sun({ out: 12, back: 18 }).why, "通勤時段紫外線低");
+});
+
+test("m7: PM2.5-only turns the mask item on without changing the headline; AQI >= 100 does", () => {
+  const pm = commuteModel(vmOfHours(synth("2026-11-21", 6, 30, (h) => (h === 8 ? { pm25: 40, aqi: 80 } : {}))), { out: 8, back: 18 });
+  const mask = pm.items.find((i) => i.id === "mask");
+  assert.equal(mask.on, true);
+  assert.equal(mask.why, "PM2.5 偏高（40 µg/m³），敏感族群建議戴口罩");
+  assert.equal(pm.headline, "來回都舒適");
+  const aq = commuteModel(vmOfHours(synth("2026-11-21", 6, 30, (h) => (h === 8 ? { aqi: 120 } : {}))), { out: 8, back: 18 });
+  assert.equal(aq.items.find((i) => i.id === "mask").why, "空氣品質差（AQI 120）");
+  assert.equal(aq.headline, "空氣品質差，記得戴口罩");
 });
 
 test("commuteModel: missing hours render as no data, never throw", () => {
@@ -87,7 +204,7 @@ test("commuteHtml: structure, labels, note, no inline styles", () => {
   assert.match(html, /<option value="18" selected>18:00<\/option>/);
   assert.equal((html.match(/class="warn"/g) || []).length, 1);
   assert.equal((html.match(/class="check-item/g) || []).length, 4);
-  assert.match(html, /<span class="tag">回家 18:00<\/span>/);
+  assert.match(html, /<span class="tag">回家 18:00・降雨 60%<\/span>/);
   assert.match(html, /data-k="item-umbrella"/);
   assert.doesNotMatch(html, /\sstyle=/, "CSP: no inline style attributes");
   assert.doesNotMatch(html, /undefined|NaN/);
