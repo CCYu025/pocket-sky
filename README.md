@@ -12,7 +12,7 @@ npm run test:e2e       # 瀏覽器 E2E（Playwright + axe-core，使用 fixtures
 npm run fixtures       # 重新擷取 tests/fixtures/
 npm run sw             # 產生 sw-assets.js（service worker 的預快取清單）
 npm run build:site     # 組出 _site/（只含執行期檔案，即 Pages 部署內容）
-npm run lighthouse     # Lighthouse 手機版品質檢查，寫入 docs/reports/lighthouse-m5.{json,md}（手動，不在 CI）
+npm run lighthouse     # Lighthouse 手機版品質檢查，寫入 docs/reports/lighthouse-m5.{json,md}（手動，不在 CI；加 -- --no-write 只印出；首次會依需要安裝固定版本的 Lighthouse 到暫存目錄；未達標 exit 1）
 npm run smoke -- <url> # 部署後冒煙測試（預設 https://ccyu025.github.io/pocket-sky/，使用真實 API）
 ```
 
