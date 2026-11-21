@@ -20,13 +20,18 @@ const TYPES = {
 
 /**
  * Start the server.
+ * @param {{overrides?: Record<string, string>}} [o] `overrides` maps a URL path (`/sw-assets.js`) to a body served instead of the file; mutable while running.
  * @returns {Promise<{url: string, close: () => Promise<void>}>}
  */
-export async function startServer() {
+export async function startServer({ overrides = {} } = {}) {
   const server = http.createServer(async (req, res) => {
     try {
       let rel = decodeURIComponent(new URL(req.url, "http://x").pathname);
       if (rel.endsWith("/")) rel += "index.html";
+      if (Object.hasOwn(overrides, rel)) {
+        res.writeHead(200, { "content-type": TYPES[path.extname(rel)] ?? "application/octet-stream", "cache-control": "no-store" });
+        return res.end(overrides[rel]);
+      }
       const file = path.join(ROOT, rel);
       if (!file.startsWith(ROOT + path.sep) || rel.startsWith("/node_modules/.")) throw new Error("outside");
       if (!(await stat(file)).isFile()) throw new Error("not a file");

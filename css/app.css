@@ -402,3 +402,22 @@ main:focus { outline: none; }
   .clock .seg7-colon, .boot .lcd, [data-shake] .alert, .boot .bar, .warn, .boot .xfill, .boot .sfill, .boot .check-item, .flip-a, .flip-b { animation: none; }
   .key, .more { transition: none; }
 }
+
+/* ---- service worker update banner (sw-register.js) ---- */
+.update-banner {
+  position: sticky;
+  bottom: calc(84px + max(0px, env(safe-area-inset-bottom, 0px) - 12px)); /* sits right above the sticky nav */
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--accent);
+  color: var(--on-accent);
+  border: var(--border);
+  box-shadow: var(--sh);
+  font-weight: 900;
+}
+.update-banner .key { min-height: 44px; min-width: 44px; padding: 0 16px; background: var(--card); color: var(--ink); }
+/* ---- end update banner ---- */
