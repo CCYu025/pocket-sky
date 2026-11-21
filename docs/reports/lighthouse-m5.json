@@ -1,0 +1,126 @@
+{
+  "generatedAt": "2026-11-21T22:11:57.364Z",
+  "lighthouse": "13.6.0",
+  "formFactor": "mobile (default preset: simulated slow 4G, 4x CPU)",
+  "target": "_site/ served by tests/e2e/server.mjs on 127.0.0.1",
+  "api": "fixtures",
+  "runs": 3,
+  "scores": {
+    "performance": 98,
+    "accessibility": 100,
+    "best-practices": 100,
+    "seo": 91
+  },
+  "targets": {
+    "performance": 90,
+    "accessibility": 95,
+    "best-practices": 95,
+    "seo": 90
+  },
+  "allRuns": [
+    {
+      "performance": 97,
+      "accessibility": 100,
+      "best-practices": 100,
+      "seo": 91
+    },
+    {
+      "performance": 98,
+      "accessibility": 100,
+      "best-practices": 100,
+      "seo": 91
+    },
+    {
+      "performance": 98,
+      "accessibility": 100,
+      "best-practices": 100,
+      "seo": 91
+    }
+  ],
+  "metrics": {
+    "first-contentful-paint": {
+      "value": 1990.277,
+      "display": "2.0 s"
+    },
+    "largest-contentful-paint": {
+      "value": 1990.277,
+      "display": "2.0 s"
+    },
+    "total-blocking-time": {
+      "value": 24.493,
+      "display": "10 ms"
+    },
+    "cumulative-layout-shift": {
+      "value": 0,
+      "display": "0"
+    },
+    "speed-index": {
+      "value": 1990.277,
+      "display": "2.0 s"
+    },
+    "interactive": {
+      "value": 2144.096,
+      "display": "2.1 s"
+    }
+  },
+  "notableAudits": [
+    {
+      "id": "first-contentful-paint",
+      "title": "First Contentful Paint",
+      "score": 0.84,
+      "display": "2.0 s"
+    },
+    {
+      "id": "unminified-css",
+      "title": "Minify CSS",
+      "score": 0,
+      "display": "Est savings of 12 KiB"
+    },
+    {
+      "id": "unminified-javascript",
+      "title": "Minify JavaScript",
+      "score": 0.5,
+      "display": "Est savings of 96 KiB"
+    },
+    {
+      "id": "unused-css-rules",
+      "title": "Reduce unused CSS",
+      "score": 0,
+      "display": "Est savings of 75 KiB"
+    },
+    {
+      "id": "robots-txt",
+      "title": "robots.txt is not valid",
+      "score": 0,
+      "display": "Fetch of robots.txt failed: Protocol error (Network.loadNetworkResource): Protocol error (Network.loadNetworkResource): CSP violation"
+    },
+    {
+      "id": "bf-cache",
+      "title": "Page prevented back/forward cache restoration",
+      "score": 0,
+      "display": "2 failure reasons"
+    },
+    {
+      "id": "document-latency-insight",
+      "title": "Document request latency",
+      "score": 0.5,
+      "display": "Est savings of 2 KiB"
+    },
+    {
+      "id": "network-dependency-tree-insight",
+      "title": "Network dependency tree",
+      "score": 0,
+      "display": null
+    },
+    {
+      "id": "render-blocking-insight",
+      "title": "Render-blocking requests",
+      "score": 0,
+      "display": "Est savings of 1,380 ms"
+    }
+  ],
+  "installability": {
+    "chromeInstallabilityErrors": [],
+    "installable": true
+  }
+}
