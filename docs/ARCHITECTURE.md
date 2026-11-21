@@ -138,15 +138,15 @@ Tokens live in `css/tokens.css` as CSS custom properties; `[data-theme="night"]`
 
 ### `js/rules/alerts.js` (pure)
 - `ALERT_RULES = { rainJump: { windowHours: 3, fromMax: 30, toMin: 60 }, tempDrop: { windowHours: 3, minDrop: 4 }, cooldownHours: 3 }`.
-- `evaluateAlerts(vm, { dismissed = {}, lastShown = {}, nowMs })` → array of `{ id, kind, startsAt, title, detail, priority }`, highest priority first:
+- `evaluateAlerts(vm, { dismissed = {}, lastShown = {}, lastShownId = {}, nowMs })` → array of `{ id, kind, startsAt, title, detail, priority, value }` (`value` = rounded rain % or rounded temperature drop), highest priority first. "Next windowHours" = `hours[1..windowHours]`; null values never trigger:
   - `rainJump`: current hour rainProb ≤ fromMax AND some hour within the next `windowHours` has rainProb ≥ toMin → `startsAt` = first such hourKey; title e.g. `15:00 起可能下雨`, detail `降雨機率 70%`.
   - `tempDrop`: `hours[0].temp − min(temp over next windowHours) ≥ minDrop` → title `氣溫將下降 5°`, detail `{HH}:00 降至 18°`.
-  - `id` = `${kind}:${date}` (one per kind per local day). Drop alerts whose id is in `dismissed`. Drop alerts whose `lastShown[kind]` is within `cooldownHours` of `nowMs` **unless** it is the same id (re-renders must keep showing it).
+  - `id` = `${kind}:${date}` (one per kind per local day). Drop alerts whose id is in `dismissed`. Drop alerts whose `lastShown[kind]` (epoch ms) is within `cooldownHours` of `nowMs` **unless** `lastShownId[kind] === id` (re-renders must keep showing it).
   - Returns `[]` when `vm.hoursAvailable` is false.
 - `pickAlert(alerts)` → first or `null` (at most one alert shown).
 
 ### `js/domain/summary.js` (pure)
-- `headline(vm, alert)` → short zh-Hant sentence, priority: (1) alert → e.g. `15 時起可能下雨，記得帶傘` / `氣溫將下降 5°，加件外套`; (2) any of next 6 hours rainProb ≥ 40 → `{HH} 時可能下雨，記得帶傘`; (3) `|yesterdayDelta| ≥ 4` → `比昨天冷 4°，加件外套` / `比昨天熱 4°，注意補水`; (4) `今天{label}，{max}° / {min}°`; (5) data unavailable → `資料暫時無法取得`. Numbers rounded to integers.
+- `headline(vm, alert)` → short zh-Hant sentence, priority: (1) alert → e.g. `15 時起可能下雨，記得帶傘` / `氣溫將下降 5°，加件外套`; (2) any of `hours[1..6]` rainProb ≥ 40 → `{H} 時可能下雨，記得帶傘` (hour not zero-padded); (3) `|round(yesterdayDelta)| ≥ 4` → `比昨天冷 4°，加件外套` / `比昨天熱 4°，注意補水`; (4) `今天{label}，{max}° / {min}°` (numbers omitted when null; missing label → branch 5); (5) data unavailable → `資料暫時無法取得`. Numbers rounded to integers.
 
 ### App shell
 - `index.html` (lang zh-Hant, viewport, theme-color, Google Fonts preconnect, `<link rel="stylesheet">` to `css/tokens.css` + `css/app.css`, `<script type="module" src="js/main.js">`), all paths relative (GitHub Pages sub-path).
