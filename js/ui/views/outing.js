@@ -74,14 +74,52 @@ export function syncControls(root, outing) {
     const sel = range.getAttribute("value");
     if (range.value !== sel) range.value = sel;
   }
-  // keep the selected bar in view inside the horizontally scrolling picker
+  // keep the focused (else selected) bar, with its focus ring, in view inside the scrolling picker
   const bars = root.querySelector(".xbars");
-  const cur = bars?.querySelector('.xbar[aria-pressed="true"]');
-  if (bars && cur) {
-    const col = cur.parentElement;
-    if (col.offsetLeft < bars.scrollLeft) bars.scrollLeft = col.offsetLeft - 8;
-    else if (col.offsetLeft + col.offsetWidth > bars.scrollLeft + bars.clientWidth) bars.scrollLeft = col.offsetLeft + col.offsetWidth - bars.clientWidth + 8;
+  if (bars) {
+    const active = root.ownerDocument?.activeElement;
+    const focused = active && bars.contains(active) && active.classList.contains("xbar") ? active : null;
+    const bar = focused ?? bars.querySelector('.xbar[aria-pressed="true"]');
+    if (bar) revealBar(bars, bar);
   }
+}
+
+/** Space kept clear on each side of a revealed bar: the scroller's own 14px padding, so the first and last bar land exactly at scrollLeft 0 / max and the 6px ring is never clipped. */
+export const REVEAL_MARGIN = 14;
+
+/**
+ * Pure scroll computation: the `scrollLeft` that brings a bar, plus `margin` on both sides, fully
+ * inside the visible area of a horizontal scroller. Edges are measured as bounding-rect deltas
+ * (`barRect.left - scrollerRect.left`), so it does not depend on which ancestor is the `offsetParent`.
+ * The result is clamped to `[0, scrollWidth - clientWidth]`.
+ * @param {{scrollLeft: number, clientWidth: number, scrollWidth: number, left: number, right: number, margin?: number}} g
+ *   `left` / `right`: the bar's edges relative to the scroller's visible left edge.
+ * @returns {number} The new `scrollLeft`.
+ */
+export function revealScrollLeft({ scrollLeft, clientWidth, scrollWidth, left, right, margin = REVEAL_MARGIN }) {
+  let next = scrollLeft;
+  if (left - margin < 0) next = scrollLeft + (left - margin);
+  else if (right + margin > clientWidth) next = scrollLeft + (right + margin - clientWidth);
+  return Math.min(Math.max(0, scrollWidth - clientWidth), Math.max(0, next));
+}
+
+/**
+ * Scroll the picker so `bar` (and its focus ring) is fully visible.
+ * @param {HTMLElement} bars The `.xbars` scroller.
+ * @param {HTMLElement} bar A `.xbar` button inside it.
+ * @returns {void}
+ */
+export function revealBar(bars, bar) {
+  const s = bars.getBoundingClientRect();
+  const r = bar.getBoundingClientRect();
+  const next = revealScrollLeft({
+    scrollLeft: bars.scrollLeft,
+    clientWidth: bars.clientWidth,
+    scrollWidth: bars.scrollWidth,
+    left: r.left - s.left - bars.clientLeft,
+    right: r.right - s.left - bars.clientLeft,
+  });
+  if (next !== bars.scrollLeft) bars.scrollLeft = next;
 }
 
 /**

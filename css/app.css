@@ -281,7 +281,7 @@ main:focus { outline: none; }
 .picker .card-head { align-items: center; margin-bottom: 0; }
 .best { background: var(--lime); color: var(--on-lime); font-weight: 900; font-size: 13px; }
 .best:disabled { background: var(--card); color: var(--sub); box-shadow: none; cursor: default; }
-.xbars { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(26px, 1fr); gap: 4px; overflow-x: auto; padding: 8px 6px 2px; }
+.xbars { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(26px, 1fr); gap: 4px; overflow-x: auto; padding: 14px 14px 4px; scroll-padding-inline: 14px; } /* room for the 6px selection / focus ring on every side */
 .xcol { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .xbar { width: 100%; height: 84px; padding: 0; border: 0; background: transparent; display: flex; align-items: flex-end; }
 .xfill { display: block; width: 100%; height: calc(var(--p) * 0.8px); min-height: 8px; border: 2px solid var(--line); background: var(--bar-ok); transform-origin: bottom; }

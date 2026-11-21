@@ -10,7 +10,7 @@ import { resolveTheme, nextPref, readPref, writePref, readLast, writeLast, THEME
 import { renderToday } from "./ui/views/today.js";
 import { createAnnouncer } from "./ui/announce.js";
 import { createAnimTracker } from "./ui/anim.js";
-import { renderOuting } from "./ui/views/outing.js";
+import { renderOuting, revealBar } from "./ui/views/outing.js";
 import { exerciseModel, slotLabel, stepIndex } from "./ui/views/exercise.js";
 import { parseRoute } from "./ui/route.js";
 import { readOuting, writeOuting } from "./app/outing-state.js";
@@ -261,7 +261,14 @@ doc.getElementById("app").addEventListener("keydown", (e) => {
   e.preventDefault();
   const target = bars[next];
   pickSlot(target.dataset.hk);
-  target.focus();
+  target.focus({ preventScroll: true });
+  revealBar(target.closest(".xbars"), target); // ring included; also covers an unchanged selection (no re-render)
+});
+
+// Tabbing onto any bar reveals it (and its ring) too.
+doc.getElementById("app").addEventListener("focusin", (e) => {
+  const el = e.target instanceof Element && e.target.classList.contains("xbar") ? e.target : null;
+  if (el) revealBar(el.closest(".xbars"), el);
 });
 
 controller.store.subscribe(render);

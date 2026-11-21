@@ -402,6 +402,60 @@ test("exercise: keyboard Left/Right (and Home/End) move the selection and focus"
   noErrors(app);
 });
 
+test("exercise keyboard: the focused bar and its focus ring stay fully visible in the scroller (End, Home, arrows)", async () => {
+  const forecast = dayForecast((f) => { f.current.time = "2026-11-21T05:45"; });
+  const app = await open({ forecast, now: "2026-11-20T22:00:00Z" }); // 06:00 Taipei
+  const { page } = app;
+  await visit(app, "#outing/exercise");
+  const geom = await page.evaluate(() => {
+    const b = document.querySelector(".xbars");
+    return { scrollW: b.scrollWidth, clientW: b.clientWidth, padTop: parseFloat(getComputedStyle(b).paddingTop), padL: parseFloat(getComputedStyle(b).paddingLeft), padR: parseFloat(getComputedStyle(b).paddingRight) };
+  });
+  assert.ok(geom.scrollW > geom.clientW, "the picker scrolls horizontally at this clock");
+  assert.ok(geom.padTop >= 12 && geom.padL >= 12 && geom.padR >= 12, `padding leaves room for the 6px ring plus slack: ${JSON.stringify(geom)}`);
+  const RING = 12;
+  const fully = () => page.evaluate((ring) => {
+    const a = document.activeElement;
+    const r = a.getBoundingClientRect();
+    const s = document.querySelector(".xbars").getBoundingClientRect();
+    const fill = a.querySelector(".xfill").getBoundingClientRect();
+    return {
+      label: a.getAttribute("aria-label"),
+      scrollLeft: document.querySelector(".xbars").scrollLeft,
+      inside: r.left - ring >= s.left && r.right + ring <= s.right && r.top - ring >= s.top && fill.top - ring >= s.top,
+      d: [Math.round(r.left - ring - s.left), Math.round(s.right - r.right - ring), Math.round(fill.top - ring - s.top)],
+    };
+  }, RING);
+  const check = async (what) => {
+    const v = await fully();
+    assert.equal(v.inside, true, `${what}: ${JSON.stringify(v)}`);
+    assert.ok(v.scrollLeft >= 0);
+  };
+  await page.locator('.xbar[aria-pressed="true"]').focus();
+  await check("initial focus");
+  const n = await page.locator(".xbar").count();
+  await page.keyboard.press("End");
+  assert.equal(await pressedIndex(page), n - 1);
+  await check("End");
+  await page.keyboard.press("ArrowRight");
+  await check("ArrowRight at the end");
+  await page.keyboard.press("Home");
+  assert.equal(await pressedIndex(page), 0);
+  await check("Home");
+  assert.equal(await page.evaluate(() => document.querySelector(".xbars").scrollLeft), 0, "scrolled all the way back, not past 0");
+  await page.keyboard.press("ArrowLeft");
+  await check("ArrowLeft at the start");
+  for (let i = 0; i < n - 1; i++) {
+    await page.keyboard.press("ArrowRight");
+    await check(`ArrowRight step ${i + 1}`);
+  }
+  for (let i = 0; i < n - 1; i++) {
+    await page.keyboard.press("ArrowLeft");
+    await check(`ArrowLeft step ${i + 1}`);
+  }
+  noErrors(app);
+});
+
 test("exercise at 22:30: the next 12 hours run to 09:00 tomorrow with 明日 markers", async () => {
   const forecast = lateForecast();
   const app = await open({ forecast, now: LATE_UTC });

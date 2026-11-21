@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { toViewModel } from "../../js/domain/derive.js";
 import { commuteModel, commuteHtml, LOCATION_NOTE } from "../../js/ui/views/commute.js";
 import { exerciseModel, exerciseHtml, resolveSelection, stepIndex, slotLabel, levelWord } from "../../js/ui/views/exercise.js";
-import { chipsHtml, outingHtml } from "../../js/ui/views/outing.js";
+import { chipsHtml, outingHtml, revealScrollLeft } from "../../js/ui/views/outing.js";
 
 const fx = (f) => JSON.parse(readFileSync(new URL(`../fixtures/${f}`, import.meta.url), "utf8"));
 const NOW = Date.parse("2026-11-21T06:20:00Z"); // 14:20 Taipei
@@ -344,4 +344,23 @@ test("outingHtml: stale banner, error card, no-hours notice", () => {
   assert.match(err, /data-action="retry"/);
   assert.match(err, /class="chips"/);
   assert.match(outingHtml({ status: "ready", vm: { ...vm, hoursAvailable: false, hours: [] }, fetchedAt: NOW }, ui()), /沒有逐時資料/);
+});
+
+// ---- picker scrolling (M2)
+
+test("revealScrollLeft: scrolls just enough to show the bar plus margin, clamped to [0, max]", () => {
+  const g = { clientWidth: 300, scrollWidth: 400, margin: 12 };
+  assert.equal(revealScrollLeft({ ...g, scrollLeft: 50, left: 100, right: 126 }), 50, "already visible: unchanged");
+  assert.equal(revealScrollLeft({ ...g, scrollLeft: 50, left: 5, right: 31 }), 43, "left ring clipped: scroll left by 7");
+  assert.equal(revealScrollLeft({ ...g, scrollLeft: 50, left: -40, right: -14 }), 0, "Home: clamped at 0, never negative");
+  assert.equal(revealScrollLeft({ ...g, scrollLeft: 0, left: 280, right: 306 }), 18, "right ring clipped: scroll right by 18");
+  assert.equal(revealScrollLeft({ ...g, scrollLeft: 0, left: 600, right: 626 }), 100, "End: clamped at scrollWidth - clientWidth");
+  assert.equal(revealScrollLeft({ clientWidth: 300, scrollWidth: 300, scrollLeft: 0, left: -50, right: -24 }), 0, "nothing to scroll");
+});
+
+test("css: .xbars pads >= 12px on top and both sides so the selection / focus ring is never clipped", () => {
+  const css = readFileSync(new URL("../../css/app.css", import.meta.url), "utf8");
+  const m = /\.xbars\s*\{[^}]*?padding:\s*(\d+)px\s+(\d+)px\s+(\d+)px\s*;/.exec(css);
+  assert.ok(m, ".xbars declares a three-value padding");
+  assert.ok(Number(m[1]) >= 12 && Number(m[2]) >= 12, `top ${m[1]}px, sides ${m[2]}px`);
 });
