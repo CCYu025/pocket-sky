@@ -65,3 +65,10 @@ test("escapeHtml handles all five chars and non-strings", () => {
   assert.equal(escapeHtml(undefined), "");
   assert.equal(escapeHtml(42), "42");
 });
+
+test("ghost: false adds the seg7--noghost modifier; default keeps ghosts", () => {
+  assert.match(seg7Svg("14:20", { ghost: false }), /^<span class="seg7 seg7--noghost" role="img"/);
+  assert.match(seg7Svg("14:20"), /^<span class="seg7" role="img"/);
+  // markup is otherwise identical: the off segments are still emitted (hidden by CSS)
+  assert.equal((seg7Svg("1", { ghost: false }).match(/ off"/g) || []).length, 5);
+});

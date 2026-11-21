@@ -45,10 +45,11 @@ export function escapeHtml(s) {
 /**
  * Render text as 7-segment digits.
  * @param {string} text Characters from SEGMENTS plus ":"; others render blank.
- * @param {{height?: number, label?: string}} [opts]
+ * @param {{height?: number, label?: string, ghost?: boolean}} [opts] `ghost: false` adds the
+ *   `seg7--noghost` modifier class, which hides the unlit ("off") segments (small clocks read cleaner).
  * @returns {string} HTML string.
  */
-export function seg7Svg(text, { height = 48, label } = {}) {
+export function seg7Svg(text, { height = 48, label, ghost = true } = {}) {
   const str = String(text ?? "");
   const width = Math.round(height * 0.56);
   let body = "";
@@ -63,5 +64,5 @@ export function seg7Svg(text, { height = 48, label } = {}) {
     ).join("");
     body += `<svg class="seg7-digit" viewBox="0 0 56 100" width="${width}" height="${height}" aria-hidden="true">${polys}</svg>`;
   }
-  return `<span class="seg7" role="img" aria-label="${escapeHtml(label ?? str)}">${body}</span>`;
+  return `<span class="${ghost ? "seg7" : "seg7 seg7--noghost"}" role="img" aria-label="${escapeHtml(label ?? str)}">${body}</span>`;
 }

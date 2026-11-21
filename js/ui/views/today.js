@@ -49,7 +49,7 @@ function hero(vm, fetchedAt) {
   const max = ready ? intText(vm.today.max) : "--";
   const min = ready ? intText(vm.today.min) : "--";
   return `<section class="hero" aria-label="現在"><div class="lcd">
-<div class="lcd-top"><span>${esc(ready ? dateLabel(vm.now.minuteKey) : "-- --")}</span><span class="clock">${seg7Svg(clock ?? "--:--", { height: 24, label: clock ? `時間 ${clock}` : "時間 無資料" })}</span></div>
+<div class="lcd-top"><span>${esc(ready ? dateLabel(vm.now.minuteKey) : "-- --")}</span><span class="clock">${seg7Svg(clock ?? "--:--", { height: 24, ghost: false, label: clock ? `時間 ${clock}` : "時間 無資料" })}</span></div>
 <div class="lcd-main"><div class="temp">${seg7Svg(temp, { height: 96, label: tempLabel })}<span class="unit" aria-hidden="true">°C</span></div>
 <div class="lcd-side"><span class="lcd-cond">${esc(ready ? vm.now.label ?? "--" : "--")}</span><span>體感 ${esc(ready ? intText(vm.now.feels) : "--")}°</span><span>${esc(max)}° / ${esc(min)}°</span></div></div>
 <div class="lcd-foot"><span>Δ YDAY ${esc(ready ? deltaText(vm.yesterdayDelta) : "--")}</span><span>UPD ${esc(upd)}</span></div>
@@ -84,7 +84,7 @@ function rainBars(vm) {
   }
   const slots = vm ? hours : Array.from({ length: BAR_COUNT }, () => ({ rainProb: null, hour: null }));
   const probs = slots.map((h) => (typeof h.rainProb === "number" ? Math.max(0, Math.min(100, h.rainProb)) : 0));
-  const bars = probs.map((p, i) => `<div class="bar" style="--p:${Math.round(p)};--i:${i}"></div>`).join("");
+  const bars = probs.map((p, i) => `<div class="bar" data-p="${Math.round(p)}" data-i="${i}"></div>`).join("");
   const labels = slots
     .map((h, i) => {
       const pct = typeof h.rainProb === "number" ? `${Math.round(h.rainProb)}%` : "--";
@@ -112,7 +112,7 @@ function sun(vm) {
   const pct = vm ? daylightPercent(vm) : null;
   const text = vm ? countdownText(vm) : null;
   return `<section class="card sun" aria-label="日出日落"><div class="sun-row"><span>日出 ${esc(rise ?? "--:--")}</span><span>${esc(text ?? "--")}</span><span>日落 ${esc(set ?? "--:--")}</span></div>
-<div class="daybar" role="progressbar" aria-label="日照已過" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct ?? 0}"${pct === null ? ' aria-valuetext="無資料"' : ""}><div style="--pct:${pct ?? 0}"></div></div></section>`;
+<div class="daybar" role="progressbar" aria-label="日照已過" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct ?? 0}"${pct === null ? ' aria-valuetext="無資料"' : ""}><div data-pct="${pct ?? 0}"></div></div></section>`;
 }
 
 /**
@@ -150,6 +150,21 @@ export function todayHtml(state, ui) {
 }
 
 /**
+ * Set the numeric custom properties (`--p`, `--i`, `--pct`) from `data-*` attributes via
+ * the CSSOM. Inline `style` attributes are blocked by the CSP (no 'unsafe-inline'),
+ * `el.style.setProperty()` is not.
+ * @param {ParentNode} root Container holding the rendered Today view.
+ * @returns {void}
+ */
+export function applyDynamicStyles(root) {
+  for (const el of root.querySelectorAll("[data-p]")) {
+    el.style.setProperty("--p", el.dataset.p);
+    el.style.setProperty("--i", el.dataset.i ?? "0");
+  }
+  for (const el of root.querySelectorAll("[data-pct]")) el.style.setProperty("--pct", el.dataset.pct);
+}
+
+/**
  * Render the Today view into `root`.
  * @param {HTMLElement} root The `<main>` element.
  * @param {object} state Controller state.
@@ -160,4 +175,5 @@ export function renderToday(root, state, ui) {
   root.setAttribute("aria-busy", state.status === "loading" ? "true" : "false");
   root.classList.toggle("anim", Boolean(ui.animate));
   root.innerHTML = todayHtml(state, ui);
+  applyDynamicStyles(root);
 }

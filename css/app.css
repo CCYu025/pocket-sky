@@ -137,6 +137,7 @@ main:focus { outline: none; }
 .seg7-digit { display: block; }
 .seg.on { fill: var(--lcd-ink); }
 .seg.off { fill: var(--lcd-ghost); }
+.seg7--noghost .seg.off { display: none; } /* small clock: unlit segments hidden */
 .seg7-colon { display: flex; flex-direction: column; gap: 7px; align-self: center; padding: 0 1px; }
 .seg7-colon i { display: block; width: 4px; height: 4px; background: var(--lcd-ink); }
 .clock .seg7-colon { animation: blink 1s steps(1) infinite; }

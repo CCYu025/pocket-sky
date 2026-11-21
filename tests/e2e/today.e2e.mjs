@@ -311,6 +311,44 @@ test("cold-drop scenario shows the temperature alert", async () => {
   noErrors(app);
 });
 
+test("CSP: no violations; bars and daylight fill are sized via CSSOM; ghost segments hidden on the clock only", async () => {
+  const app = await open({ forecast: rainyForecast() });
+  const { page } = app;
+  await app.ctx.addInitScript(() => {
+    window.__csp = [];
+    document.addEventListener("securitypolicyviolation", (e) => window.__csp.push(`${e.violatedDirective} ${e.blockedURI}`));
+  });
+  await app.go();
+  await waitReady(page);
+  await settle(page);
+
+  const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute("content");
+  assert.ok(!/unsafe-inline/.test(csp), csp);
+  assert.deepEqual(await page.evaluate(() => window.__csp), [], "no securitypolicyviolation events");
+
+  // numeric custom properties arrive through el.style.setProperty
+  const bars = await page.$$eval(".bar", (els) => els.map((e) => ({ p: e.style.getPropertyValue("--p"), h: e.getBoundingClientRect().height })));
+  assert.equal(bars.length, 8);
+  assert.equal(bars[2].p, "70");
+  assert.ok(Math.abs(bars[2].h - 70 * 0.72) < 0.6, `70% bar height ${bars[2].h}`);
+  assert.ok(bars[2].h > bars[0].h, "taller bar for the higher probability");
+  const fill = await page.evaluate(() => {
+    const f = document.querySelector(".daybar > div");
+    const track = document.querySelector(".daybar");
+    return { pct: f.style.getPropertyValue("--pct"), ratio: f.getBoundingClientRect().width / track.clientWidth };
+  });
+  assert.equal(fill.pct, "74");
+  assert.ok(Math.abs(fill.ratio - 0.74) < 0.01, `fill ratio ${fill.ratio}`);
+
+  // ghost segments: hidden on the 24px clock, visible on the big temperature
+  const display = (sel) => page.locator(`${sel} .seg.off`).first().evaluate((el) => getComputedStyle(el).display);
+  assert.equal(await display(".clock"), "none");
+  assert.notEqual(await display(".temp"), "none");
+  assert.equal(await page.locator(".clock .seg7").evaluate((el) => el.classList.contains("seg7--noghost")), true);
+  assert.equal(await page.locator(".temp .seg7").evaluate((el) => el.classList.contains("seg7--noghost")), false);
+  noErrors(app);
+});
+
 test("hash navigation: #outing placeholder and back to #today", async () => {
   const app = await open({});
   const { page } = app;
@@ -380,7 +418,7 @@ test("error without data shows 重試; retry recovers", async () => {
 
   app.mode.forecast = "ok";
   await retry.click();
-  await page.locator(".metric").first().waitFor();
+  await waitReady(page);
   assert.equal(await page.locator('[data-action="retry"]').count(), 0);
   assert.equal(await page.locator('.temp [role="img"]').getAttribute("aria-label"), "氣溫 23 度");
   assert.deepEqual(app.errors, []);

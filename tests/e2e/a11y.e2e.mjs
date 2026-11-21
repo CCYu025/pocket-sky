@@ -24,8 +24,12 @@ async function check(name, page) {
   assert.deepEqual(blocking, [], `${name}: ${JSON.stringify(blocking, null, 1)}`);
 }
 
+// axe-core itself fetches cross-origin stylesheets to read their rules; with the strict connect-src
+// (no Google Fonts hosts) that fetch is blocked. The app never does it (see the CSP test in today.e2e.mjs).
+const AXE_CSS_FETCH = /Connecting to 'https:\/\/fonts\.googleapis\.com\/css2.*connect-src/;
+
 async function scenario(name, opts, prep) {
-  const app = await openApp(browser, server.url, opts);
+  const app = await openApp(browser, server.url, { ...opts, expectedErrors: [AXE_CSS_FETCH, ...(opts.expectedErrors ?? [])] });
   try {
     if (prep) await prep(app);
     else {
