@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Pocket Sky 外出：出遊（方向 A，第二版）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&amp;family=Noto+Sans+TC:wght@500;900&amp;display=swap">
+<style>
+body{margin:0}
+a{color:inherit}a:hover{opacity:.8}
+@keyframes blink{50%{opacity:0}}
+@keyframes swing{0%{transform:rotate(0)}40%{transform:rotate(-8deg)}70%{transform:rotate(5deg)}100%{transform:rotate(3deg)}}
+@keyframes growx{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes boot{0%{opacity:0}25%{opacity:1}35%{opacity:.25}50%{opacity:1}}
+.blink{animation:blink 1s steps(1) infinite}
+.swing{transform:rotate(3deg);animation:swing .7s ease-out .5s 1 both}
+.slot{transform-origin:left;animation:growx .5s ease-out both}
+.boot{animation:boot .9s ease-out 1 both}
+.key{transition:transform .08s,box-shadow .08s}
+.key:active{transform:translate(4px,4px);box-shadow:none !important}
+@media (prefers-reduced-motion: reduce){.blink,.swing,.slot,.boot{animation:none}}
+</style>
+</helmet>
+<div style="width: 390px; height: 1000px; box-sizing: border-box; background: {{t.shell}}; color: {{t.ink}}; font-family: 'Noto Sans TC', sans-serif; padding: 16px 16px 0; display: flex; flex-direction: column; gap: 14px; transition: background .3s, color .3s">
+
+<div style="display: flex; justify-content: space-between; align-items: center; min-height: 44px">
+<span style="font-family: 'Share Tech Mono', monospace; font-size: 15px; letter-spacing: 3px">POCKET SKY</span>
+<span class="swing" style="border: 3px solid {{t.line}}; background: {{t.card}}; padding: 2px 10px; font-size: 14px; font-weight: 900">第二版功能</span>
+</div>
+
+<div role="group" aria-label="情境" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+<a class="key" href="ACommute.dc.html" style="min-height: 48px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-size: 16px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center">通勤</a>
+<a class="key" href="AExercise.dc.html" style="min-height: 48px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-size: 16px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center">運動</a>
+<a class="key" href="ATrip.dc.html" aria-current="page" style="min-height: 48px; border: 3px solid {{t.line}}; background: #7DD3FC; color: #000000; box-shadow: {{t.sh}}; font-size: 16px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center">出遊</a>
+</div>
+
+<div role="group" aria-label="目的地" style="display: flex; gap: 10px">
+<button class="key" style="min-height: 44px; padding: 0 12px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-family: inherit; font-size: 14px; font-weight: 500">目前位置</button>
+<button class="key" aria-pressed="true" style="min-height: 44px; padding: 0 12px; border: 3px solid {{t.line}}; background: {{t.ink}}; color: {{t.shell}}; box-shadow: {{t.sh}}; font-family: inherit; font-size: 14px; font-weight: 900">日月潭</button>
+<button class="key" style="min-height: 44px; padding: 0 12px; border: 3px dashed {{t.line}}; background: transparent; color: {{t.ink}}; font-family: inherit; font-size: 14px; font-weight: 500">＋ 搜尋</button>
+</div>
+
+<section aria-label="目的地溫差" style="border: 3px solid {{t.line}}; background: {{t.card}}; box-shadow: {{t.shBig}}; padding: 12px">
+<div class="boot" style="border: 3px solid #000000; border-radius: 4px; background: {{t.lcd}}; box-shadow: {{t.glow}}; padding: 12px 14px; color: #1E2618; display: flex; justify-content: space-between; align-items: center; transition: background .3s, box-shadow .3s">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-family: 'Share Tech Mono', monospace; font-size: 13px">VS 目前位置</span>
+<div role="img" aria-label="比目前位置低 6 度" style="display: flex; align-items: flex-start; gap: 5px; transform: skewX(-6deg)">
+<sc-for list="{{diff}}" as="d" hint-placeholder-count="2">
+<svg aria-hidden="true" width="{{d.w}}" height="{{d.h}}" viewBox="0 0 56 100"><polygon points="10,6 16,0 40,0 46,6 40,12 16,12" fill="{{d.a}}"></polygon><polygon points="50,10 56,16 56,40 50,46 44,40 44,16" fill="{{d.b}}"></polygon><polygon points="50,54 56,60 56,84 50,90 44,84 44,60" fill="{{d.c}}"></polygon><polygon points="10,94 16,88 40,88 46,94 40,100 16,100" fill="{{d.d}}"></polygon><polygon points="6,54 12,60 12,84 6,90 0,84 0,60" fill="{{d.e}}"></polygon><polygon points="6,10 12,16 12,40 6,46 0,40 0,16" fill="{{d.f}}"></polygon><polygon points="10,50 16,44 40,44 46,50 40,56 16,56" fill="{{d.g}}"></polygon></svg>
+</sc-for>
+<span style="font-family: 'Share Tech Mono', monospace; font-size: 22px">°C</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 3px">
+<span style="font-size: 18px; font-weight: 900">日月潭</span>
+<span style="font-size: 13px; font-weight: 500">海拔 748 m</span>
+<span style="font-size: 13px; font-weight: 500">現在 18° 多雲</span>
+<span class="blink" style="font-family: 'Share Tech Mono', monospace; font-size: 13px; font-weight: 900">!13:00 RAIN</span>
+</div>
+</div>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<button class="key" style="min-height: 44px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-family: 'Share Tech Mono', monospace; font-size: 15px">開始 09:00 ▾</button>
+<button class="key" style="min-height: 44px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-family: 'Share Tech Mono', monospace; font-size: 15px">結束 16:00 ▾</button>
+</div>
+
+<h2 style="margin: 4px 0 0; font-size: 22px; font-weight: 900">建議 09:00–12:00 遊玩</h2>
+
+<section aria-label="逐時狀態" style="border: 3px solid {{t.line}}; background: {{t.card}}; box-shadow: {{t.sh}}; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{slots}}" as="s" hint-placeholder-count="8">
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="width: 22px; font-family: 'Share Tech Mono', monospace; font-size: 13px">{{s.t}}</span>
+<span style="flex-grow: 1; height: 16px; border: 2px solid {{t.line}}; position: relative; overflow: hidden">
+<span class="slot" style="position: absolute; left: 0; top: 0; bottom: 0; width: {{s.w}}%; background: {{s.c}}; animation-delay: {{s.delay}}s"></span>
+</span>
+<span style="width: 74px; text-align: right; font-size: 13px; font-weight: 900">{{s.temp}}° 雨{{s.rain}}%</span>
+</div>
+</sc-for>
+<div style="display: flex; gap: 14px; font-size: 12px; font-weight: 500; color: {{t.sub}}; margin-top: 2px">
+<span>長度 = 舒適度</span><span>粉色 = 不建議</span>
+</div>
+</section>
+
+<nav aria-label="主選單" style="margin-top: auto; margin-bottom: 20px; display: grid; grid-template-columns: 1fr 1.3fr 1.3fr; gap: 10px">
+<button class="key" onClick="{{toggleLight}}" aria-pressed="{{lightStr}}" style="min-height: 56px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-family: 'Share Tech Mono', monospace; font-size: 15px">LIGHT</button>
+<a class="key" href="AToday.dc.html" style="min-height: 56px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-size: 17px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center; box-sizing: border-box">今天</a>
+<a class="key" href="ACommute.dc.html" aria-current="page" style="min-height: 56px; border: 3px solid {{t.line}}; background: #FFD23F; color: #000000; box-shadow: {{t.sh}}; font-size: 17px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center; box-sizing: border-box">外出</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1000}}'>
+class Component extends DCLogic {
+constructor(props) { super(props); this.state = { night: false }; }
+theme(n) {
+return n
+? { shell: '#141414', ink: '#F5F0E0', sub: '#C9C2B0', card: '#1F1F1F', line: '#FFD23F', sh: '4px 4px 0 #FFD23F', shBig: '6px 6px 0 #FFD23F', lcd: '#8FE3CC', glow: '0 0 22px rgba(143,227,204,0.45), inset 0 3px 0 rgba(0,0,0,0.22)' }
+: { shell: '#FFF7D6', ink: '#000000', sub: '#3D3A33', card: '#FFFFFF', line: '#000000', sh: '4px 4px 0 #000000', shBig: '6px 6px 0 #000000', lcd: '#B7C3A3', glow: 'inset 0 3px 0 rgba(0,0,0,0.22)' };
+}
+seg(str, H) {
+var MAP = { '0': 'abcdef', '1': 'bc', '2': 'abdeg', '3': 'abcdg', '4': 'bcfg', '5': 'acdfg', '6': 'acdefg', '7': 'abc', '8': 'abcdefg', '9': 'abcdfg', '-': 'g' };
+var on = '#1E2618', off = 'rgba(30,38,24,0.09)';
+return str.split('').map(function (ch) {
+var lit = MAP[ch] || '', o = { w: Math.round(H * 0.56), h: H };
+'abcdefg'.split('').forEach(function (k) { o[k] = lit.indexOf(k) >= 0 ? on : off; });
+return o;
+});
+}
+renderVals() {
+var self = this, n = this.state.night, t = this.theme(n);
+var raw = [['09', 18, 0, 90], ['10', 19, 0, 92], ['11', 20, 10, 85], ['12', 20, 30, 62], ['13', 19, 60, 30], ['14', 18, 70, 22], ['15', 18, 60, 28], ['16', 17, 40, 50]];
+return {
+t: t,
+diff: this.seg('-6', 72),
+slots: raw.map(function (r, j) {
+return { t: r[0], temp: r[1], rain: r[2], w: r[3], c: r[3] < 40 ? '#FF6B9A' : (r[3] < 70 ? '#7DD3FC' : t.ink), delay: (0.3 + j * 0.07).toFixed(2) };
+}),
+lightStr: n ? 'true' : 'false',
+toggleLight: function () { self.setState({ night: !self.state.night }); }
+};
+}
+}
+</script>
+</body>
+</html>

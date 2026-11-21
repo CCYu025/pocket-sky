@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Pocket Sky 外出：通勤（方向 A）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&amp;family=Noto+Sans+TC:wght@500;900&amp;display=swap">
+<style>
+body{margin:0}
+a{color:inherit}a:hover{opacity:.8}
+@keyframes blink{50%{opacity:0}}
+@keyframes pop{0%{transform:translateY(8px) scale(.96);opacity:0}100%{transform:none;opacity:1}}
+@keyframes boot{0%{opacity:0}25%{opacity:1}35%{opacity:.25}50%{opacity:1}}
+.blink{animation:blink 1s steps(1) infinite}
+.pop{animation:pop .35s ease-out both}
+.boot{animation:boot .9s ease-out 1 both}
+.key{transition:transform .08s,box-shadow .08s}
+.key:active{transform:translate(4px,4px);box-shadow:none !important}
+@media (prefers-reduced-motion: reduce){.blink,.pop,.boot{animation:none}}
+</style>
+</helmet>
+<div style="width: 390px; height: 1000px; box-sizing: border-box; background: {{t.shell}}; color: {{t.ink}}; font-family: 'Noto Sans TC', sans-serif; padding: 16px 16px 0; display: flex; flex-direction: column; gap: 14px; transition: background .3s, color .3s">
+
+<div style="display: flex; justify-content: space-between; align-items: center; min-height: 44px">
+<span style="font-family: 'Share Tech Mono', monospace; font-size: 15px; letter-spacing: 3px">POCKET SKY</span>
+<span style="font-size: 20px; font-weight: 900">外出</span>
+</div>
+
+<div role="group" aria-label="情境" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+<a class="key" href="ACommute.dc.html" aria-current="page" style="min-height: 48px; border: 3px solid {{t.line}}; background: #FFD23F; color: #000000; box-shadow: {{t.sh}}; font-size: 16px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center">通勤</a>
+<a class="key" href="AExercise.dc.html" style="min-height: 48px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-size: 16px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center">運動</a>
+<a class="key" href="ATrip.dc.html" style="min-height: 48px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-size: 16px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 4px">出遊 <span style="font-size: 11px; font-weight: 500; border: 1.5px solid {{t.line}}; padding: 0 3px">v2</span></a>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<button class="key" style="min-height: 58px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-family: inherit; text-align: left; padding: 6px 10px; display: flex; flex-direction: column; justify-content: center">
+<span style="font-size: 12px; font-weight: 500; color: {{t.sub}}">出門・家</span>
+<span style="font-size: 15px; font-weight: 900">目前位置 ▾</span>
+</button>
+<button class="key" style="min-height: 58px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-family: inherit; text-align: left; padding: 6px 10px; display: flex; flex-direction: column; justify-content: center">
+<span style="font-size: 12px; font-weight: 500; color: {{t.sub}}">回家・公司</span>
+<span style="font-size: 15px; font-weight: 900">南屯區 ▾</span>
+</button>
+</div>
+
+<section aria-label="通勤時段天氣" style="border: 3px solid {{t.line}}; background: {{t.card}}; box-shadow: {{t.shBig}}; padding: 12px">
+<div class="boot" style="border: 3px solid #000000; border-radius: 4px; background: {{t.lcd}}; box-shadow: {{t.glow}}; padding: 12px; color: #1E2618; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; transition: background .3s, box-shadow .3s">
+<sc-for list="{{legs}}" as="l" hint-placeholder-count="2">
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 0 4px">
+<div style="display: flex; justify-content: space-between; font-family: 'Share Tech Mono', monospace; font-size: 13px">
+<span>{{l.label}}</span>
+<sc-if value="{{l.warn}}" hint-placeholder-val="{{ false }}"><span class="blink" style="font-weight: 900">!RAIN</span></sc-if>
+</div>
+<div role="img" aria-label="{{l.aria}}" style="display: flex; align-items: center; gap: 3px; transform: skewX(-6deg)">
+<sc-for list="{{l.hh}}" as="d" hint-placeholder-count="2">
+<svg aria-hidden="true" width="{{d.w}}" height="{{d.h}}" viewBox="0 0 56 100"><polygon points="10,6 16,0 40,0 46,6 40,12 16,12" fill="{{d.a}}"></polygon><polygon points="50,10 56,16 56,40 50,46 44,40 44,16" fill="{{d.b}}"></polygon><polygon points="50,54 56,60 56,84 50,90 44,84 44,60" fill="{{d.c}}"></polygon><polygon points="10,94 16,88 40,88 46,94 40,100 16,100" fill="{{d.d}}"></polygon><polygon points="6,54 12,60 12,84 6,90 0,84 0,60" fill="{{d.e}}"></polygon><polygon points="6,10 12,16 12,40 6,46 0,40 0,16" fill="{{d.f}}"></polygon><polygon points="10,50 16,44 40,44 46,50 40,56 16,56" fill="{{d.g}}"></polygon></svg>
+</sc-for>
+<span style="display: flex; flex-direction: column; gap: 9px"><span style="width: 5px; height: 5px; background: #1E2618"></span><span style="width: 5px; height: 5px; background: #1E2618"></span></span>
+<sc-for list="{{l.mm}}" as="d" hint-placeholder-count="2">
+<svg aria-hidden="true" width="{{d.w}}" height="{{d.h}}" viewBox="0 0 56 100"><polygon points="10,6 16,0 40,0 46,6 40,12 16,12" fill="{{d.a}}"></polygon><polygon points="50,10 56,16 56,40 50,46 44,40 44,16" fill="{{d.b}}"></polygon><polygon points="50,54 56,60 56,84 50,90 44,84 44,60" fill="{{d.c}}"></polygon><polygon points="10,94 16,88 40,88 46,94 40,100 16,100" fill="{{d.d}}"></polygon><polygon points="6,54 12,60 12,84 6,90 0,84 0,60" fill="{{d.e}}"></polygon><polygon points="6,10 12,16 12,40 6,46 0,40 0,16" fill="{{d.f}}"></polygon><polygon points="10,50 16,44 40,44 46,50 40,56 16,56" fill="{{d.g}}"></polygon></svg>
+</sc-for>
+</div>
+<span style="font-size: 17px; font-weight: 900">{{l.wx}}</span>
+<span style="font-size: 13px; font-weight: 500">{{l.detail}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<button class="key" aria-label="修改出門時間，目前 08:00" style="min-height: 44px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-family: 'Share Tech Mono', monospace; font-size: 15px">出門 08:00 ▾</button>
+<button class="key" aria-label="修改回家時間，目前 18:00" style="min-height: 44px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-family: 'Share Tech Mono', monospace; font-size: 15px">回家 18:00 ▾</button>
+</div>
+
+<h2 style="margin: 4px 0 0; font-size: 22px; font-weight: 900">傍晚回家會遇到雨</h2>
+
+<section aria-label="準備清單" style="border: 3px solid {{t.line}}; background: {{t.card}}; box-shadow: {{t.sh}}; padding: 4px 12px">
+<ul style="list-style: none; margin: 0; padding: 0">
+<sc-for list="{{items}}" as="it" hint-placeholder-count="4">
+<li class="pop" style="min-height: 56px; display: flex; align-items: center; gap: 12px; border-bottom: {{it.sep}}; animation-delay: {{it.delay}}s">
+<span style="width: 24px; height: 24px; flex-shrink: 0; border: 3px solid {{t.line}}; background: {{it.box}}; display: flex; align-items: center; justify-content: center">
+<sc-if value="{{it.on}}" hint-placeholder-val="{{ true }}"><svg role="img" aria-label="建議攜帶" width="16" height="16" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6" fill="none" stroke="#000000" stroke-width="4" stroke-linecap="square"></path></svg></sc-if>
+</span>
+<div style="display: flex; flex-direction: column">
+<span style="font-size: 16px; font-weight: 900; opacity: {{it.op}}">{{it.name}}</span>
+<span style="font-size: 12px; font-weight: 500; color: {{t.sub}}">{{it.why}}</span>
+</div>
+</li>
+</sc-for>
+</ul>
+</section>
+
+<nav aria-label="主選單" style="margin-top: auto; margin-bottom: 20px; display: grid; grid-template-columns: 1fr 1.3fr 1.3fr; gap: 10px">
+<button class="key" onClick="{{toggleLight}}" aria-pressed="{{lightStr}}" style="min-height: 56px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-family: 'Share Tech Mono', monospace; font-size: 15px">LIGHT</button>
+<a class="key" href="AToday.dc.html" style="min-height: 56px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-size: 17px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center; box-sizing: border-box">今天</a>
+<a class="key" href="ACommute.dc.html" aria-current="page" style="min-height: 56px; border: 3px solid {{t.line}}; background: #FFD23F; color: #000000; box-shadow: {{t.sh}}; font-size: 17px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center; box-sizing: border-box">外出</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1000}}'>
+class Component extends DCLogic {
+constructor(props) { super(props); this.state = { night: false }; }
+theme(n) {
+return n
+? { shell: '#141414', ink: '#F5F0E0', sub: '#C9C2B0', card: '#1F1F1F', line: '#FFD23F', sh: '4px 4px 0 #FFD23F', shBig: '6px 6px 0 #FFD23F', lcd: '#8FE3CC', glow: '0 0 22px rgba(143,227,204,0.45), inset 0 3px 0 rgba(0,0,0,0.22)' }
+: { shell: '#FFF7D6', ink: '#000000', sub: '#3D3A33', card: '#FFFFFF', line: '#000000', sh: '4px 4px 0 #000000', shBig: '6px 6px 0 #000000', lcd: '#B7C3A3', glow: 'inset 0 3px 0 rgba(0,0,0,0.22)' };
+}
+seg(str, H) {
+var MAP = { '0': 'abcdef', '1': 'bc', '2': 'abdeg', '3': 'abcdg', '4': 'bcfg', '5': 'acdfg', '6': 'acdefg', '7': 'abc', '8': 'abcdefg', '9': 'abcdfg', '-': 'g' };
+var on = '#1E2618', off = 'rgba(30,38,24,0.09)';
+return str.split('').map(function (ch) {
+var lit = MAP[ch] || '', o = { w: Math.round(H * 0.56), h: H };
+'abcdefg'.split('').forEach(function (k) { o[k] = lit.indexOf(k) >= 0 ? on : off; });
+return o;
+});
+}
+renderVals() {
+var self = this, n = this.state.night, t = this.theme(n);
+var items = [
+{ name: '雨傘', why: '18 時降雨機率 60%（≥ 40% 建議）', on: true },
+{ name: '薄外套', why: '回家體感 18°（≤ 18° 建議）', on: true },
+{ name: '防曬', why: '通勤時段紫外線低', on: false },
+{ name: '口罩', why: '空氣品質良好 AQI 42', on: false }
+];
+return {
+t: t,
+legs: [
+{ label: 'OUT 家', hh: this.seg('08', 36), mm: this.seg('00', 36), aria: '出門 08:00', wx: '19° 晴', detail: '雨 0%・風 8 km/h', warn: false },
+{ label: 'BACK 公司', hh: this.seg('18', 36), mm: this.seg('00', 36), aria: '回家 18:00', wx: '20° 雷雨', detail: '雨 60%・風 18 km/h', warn: true }
+],
+items: items.map(function (it, j) {
+return { name: it.name, why: it.why, on: it.on, box: it.on ? '#FFD23F' : 'transparent', op: it.on ? 1 : 0.55, sep: j < items.length - 1 ? '2px solid ' + t.line : '0', delay: (0.5 + j * 0.1).toFixed(2) };
+}),
+lightStr: n ? 'true' : 'false',
+toggleLight: function () { self.setState({ night: !self.state.night }); }
+};
+}
+}
+</script>
+</body>
+</html>
