@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Pocket Sky 今天（方向 A）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&amp;family=Noto+Sans+TC:wght@500;900&amp;display=swap">
+<style>
+body{margin:0}
+a{color:inherit}a:hover{opacity:.8}
+@keyframes blink{50%{opacity:0}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+@keyframes grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes boot{0%{opacity:0}25%{opacity:1}35%{opacity:.25}50%{opacity:1}}
+.blink{animation:blink 1s steps(1) infinite}
+.shake{animation:shake .5s ease-out .4s 1 both}
+.bar{transform-origin:bottom;animation:grow .6s cubic-bezier(.3,1.3,.5,1) both}
+.boot{animation:boot .9s ease-out 1 both}
+.key{transition:transform .08s,box-shadow .08s}
+.key:active{transform:translate(4px,4px);box-shadow:none !important}
+@media (prefers-reduced-motion: reduce){.blink,.shake,.bar,.boot{animation:none}}
+</style>
+</helmet>
+<div style="width: 390px; height: 1000px; box-sizing: border-box; background: {{t.shell}}; color: {{t.ink}}; font-family: 'Noto Sans TC', sans-serif; padding: 16px 16px 0; display: flex; flex-direction: column; gap: 14px; transition: background .3s, color .3s">
+
+<div style="display: flex; justify-content: space-between; align-items: center">
+<span style="font-family: 'Share Tech Mono', monospace; font-size: 15px; letter-spacing: 3px">POCKET SKY</span>
+<button class="key" style="min-height: 44px; padding: 0 12px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-family: inherit; font-size: 14px; font-weight: 500">台中市・西屯區 ▾</button>
+</div>
+
+<h1 style="margin: 0; font-size: 26px; font-weight: 900; line-height: 1.3">15 時起雷雨，<br>出門記得帶傘</h1>
+
+<div class="shake" role="status" style="border: 3px solid {{t.line}}; background: #FF6B9A; color: #000000; box-shadow: {{t.sh}}; padding: 8px 4px 8px 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px">
+<span style="font-size: 15px; font-weight: 900">15:00 降雨 70%・氣溫將降 5°</span>
+<button aria-label="關閉提醒" style="width: 44px; height: 44px; border: 0; background: transparent; color: #000000; font-size: 22px; font-weight: 900">×</button>
+</div>
+
+<section aria-label="現在" style="border: 3px solid {{t.line}}; background: {{t.card}}; box-shadow: {{t.shBig}}; padding: 12px">
+<div class="boot" style="border: 3px solid #000000; border-radius: 4px; background: {{t.lcd}}; box-shadow: {{t.glow}}; padding: 12px 14px; color: #1E2618; display: flex; flex-direction: column; gap: 8px; transition: background .3s, box-shadow .3s">
+<div style="display: flex; justify-content: space-between; align-items: center; font-family: 'Share Tech Mono', monospace; font-size: 14px">
+<span>SA 11-21</span>
+<div role="img" aria-label="時間 14:20" style="display: flex; align-items: center; gap: 3px; transform: skewX(-6deg)">
+<sc-for list="{{hh}}" as="d" hint-placeholder-count="2">
+<svg aria-hidden="true" width="{{d.w}}" height="{{d.h}}" viewBox="0 0 56 100"><polygon points="10,6 16,0 40,0 46,6 40,12 16,12" fill="{{d.a}}"></polygon><polygon points="50,10 56,16 56,40 50,46 44,40 44,16" fill="{{d.b}}"></polygon><polygon points="50,54 56,60 56,84 50,90 44,84 44,60" fill="{{d.c}}"></polygon><polygon points="10,94 16,88 40,88 46,94 40,100 16,100" fill="{{d.d}}"></polygon><polygon points="6,54 12,60 12,84 6,90 0,84 0,60" fill="{{d.e}}"></polygon><polygon points="6,10 12,16 12,40 6,46 0,40 0,16" fill="{{d.f}}"></polygon><polygon points="10,50 16,44 40,44 46,50 40,56 16,56" fill="{{d.g}}"></polygon></svg>
+</sc-for>
+<span class="blink" style="display: flex; flex-direction: column; gap: 7px"><span style="width: 4px; height: 4px; background: #1E2618"></span><span style="width: 4px; height: 4px; background: #1E2618"></span></span>
+<sc-for list="{{mm}}" as="d" hint-placeholder-count="2">
+<svg aria-hidden="true" width="{{d.w}}" height="{{d.h}}" viewBox="0 0 56 100"><polygon points="10,6 16,0 40,0 46,6 40,12 16,12" fill="{{d.a}}"></polygon><polygon points="50,10 56,16 56,40 50,46 44,40 44,16" fill="{{d.b}}"></polygon><polygon points="50,54 56,60 56,84 50,90 44,84 44,60" fill="{{d.c}}"></polygon><polygon points="10,94 16,88 40,88 46,94 40,100 16,100" fill="{{d.d}}"></polygon><polygon points="6,54 12,60 12,84 6,90 0,84 0,60" fill="{{d.e}}"></polygon><polygon points="6,10 12,16 12,40 6,46 0,40 0,16" fill="{{d.f}}"></polygon><polygon points="10,50 16,44 40,44 46,50 40,56 16,56" fill="{{d.g}}"></polygon></svg>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; justify-content: space-between; align-items: flex-end">
+<div role="img" aria-label="氣溫 24 度" style="display: flex; align-items: flex-start; gap: 6px; transform: skewX(-6deg)">
+<sc-for list="{{tt}}" as="d" hint-placeholder-count="2">
+<svg aria-hidden="true" width="{{d.w}}" height="{{d.h}}" viewBox="0 0 56 100"><polygon points="10,6 16,0 40,0 46,6 40,12 16,12" fill="{{d.a}}"></polygon><polygon points="50,10 56,16 56,40 50,46 44,40 44,16" fill="{{d.b}}"></polygon><polygon points="50,54 56,60 56,84 50,90 44,84 44,60" fill="{{d.c}}"></polygon><polygon points="10,94 16,88 40,88 46,94 40,100 16,100" fill="{{d.d}}"></polygon><polygon points="6,54 12,60 12,84 6,90 0,84 0,60" fill="{{d.e}}"></polygon><polygon points="6,10 12,16 12,40 6,46 0,40 0,16" fill="{{d.f}}"></polygon><polygon points="10,50 16,44 40,44 46,50 40,56 16,56" fill="{{d.g}}"></polygon></svg>
+</sc-for>
+<span style="font-family: 'Share Tech Mono', monospace; font-size: 24px">°C</span>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px">
+<span style="font-size: 18px; font-weight: 900">多雲</span>
+<span style="font-size: 14px; font-weight: 500">體感 26°</span>
+<span style="font-size: 14px; font-weight: 500">27° / 19°</span>
+</div>
+</div>
+<div style="display: flex; justify-content: space-between; border-top: 2px solid rgba(30,38,24,0.3); padding-top: 6px; font-family: 'Share Tech Mono', monospace; font-size: 13px">
+<span>Δ YDAY -4°</span><span>UPD 14:15</span>
+</div>
+</div>
+</section>
+
+<section aria-label="重點指標" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+<sc-for list="{{metrics}}" as="m" hint-placeholder-count="5">
+<div style="border: 3px solid {{t.line}}; background: {{t.card}}; box-shadow: {{t.sh}}; padding: 8px 10px; display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 12px; font-weight: 500; color: {{t.sub}}">{{m.k}}</span>
+<span style="font-size: 19px; font-weight: 900">{{m.v}}</span>
+<span style="font-size: 12px; font-weight: 500; color: {{t.sub}}">{{m.s}}</span>
+</div>
+</sc-for>
+<button class="key" style="border: 3px dashed {{t.line}}; background: transparent; color: {{t.ink}}; font-family: inherit; font-size: 15px; font-weight: 900; min-height: 70px">更多 ›</button>
+</section>
+
+<section aria-label="逐時降雨" style="border: 3px solid {{t.line}}; background: {{t.card}}; box-shadow: {{t.sh}}; padding: 10px 12px 8px">
+<div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 900; margin-bottom: 6px"><span>逐時降雨</span><span style="font-weight: 500; color: {{t.sub}}">高度 = 機率</span></div>
+<div role="img" aria-label="逐時降雨機率，16 時最高 70%" style="height: 76px; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; align-items: end">
+<sc-for list="{{hours}}" as="h" hint-placeholder-count="8">
+<div class="bar" style="height: {{h.px}}px; border: 2px solid {{t.line}}; background: #7DD3FC; animation-delay: {{h.delay}}s"></div>
+</sc-for>
+</div>
+<div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-top: 4px; text-align: center">
+<sc-for list="{{hours}}" as="h" hint-placeholder-count="8">
+<div style="display: flex; flex-direction: column"><span style="font-size: 12px; font-weight: 900">{{h.r}}%</span><span style="font-size: 11px; color: {{t.sub}}">{{h.t}}</span></div>
+</sc-for>
+</div>
+</section>
+
+<section aria-label="日出日落" style="border: 3px solid {{t.line}}; background: {{t.card}}; box-shadow: {{t.sh}}; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: 900"><span>日出 06:22</span><span>還有 2 時 48 分天黑</span><span>日落 17:08</span></div>
+<div style="height: 12px; border: 2px solid {{t.line}}"><div style="width: 74%; height: 100%; background: #FFD23F"></div></div>
+</section>
+
+<a href="https://open-meteo.com/" style="font-size: 12px; color: {{t.sub}}">Weather data by Open-Meteo.com</a>
+
+<nav aria-label="主選單" style="margin-top: auto; margin-bottom: 20px; display: grid; grid-template-columns: 1fr 1.3fr 1.3fr; gap: 10px">
+<button class="key" onClick="{{toggleLight}}" aria-pressed="{{lightStr}}" style="min-height: 56px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-family: 'Share Tech Mono', monospace; font-size: 15px">LIGHT</button>
+<a class="key" href="AToday.dc.html" aria-current="page" style="min-height: 56px; border: 3px solid {{t.line}}; background: #FFD23F; color: #000000; box-shadow: {{t.sh}}; font-size: 17px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center; box-sizing: border-box">今天</a>
+<a class="key" href="ACommute.dc.html" style="min-height: 56px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-size: 17px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center; box-sizing: border-box">外出</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1000}}'>
+class Component extends DCLogic {
+constructor(props) { super(props); this.state = { night: false }; }
+theme(n) {
+return n
+? { shell: '#141414', ink: '#F5F0E0', sub: '#C9C2B0', card: '#1F1F1F', line: '#FFD23F', sh: '4px 4px 0 #FFD23F', shBig: '6px 6px 0 #FFD23F', lcd: '#8FE3CC', glow: '0 0 22px rgba(143,227,204,0.45), inset 0 3px 0 rgba(0,0,0,0.22)' }
+: { shell: '#FFF7D6', ink: '#000000', sub: '#3D3A33', card: '#FFFFFF', line: '#000000', sh: '4px 4px 0 #000000', shBig: '6px 6px 0 #000000', lcd: '#B7C3A3', glow: 'inset 0 3px 0 rgba(0,0,0,0.22)' };
+}
+seg(str, H) {
+var MAP = { '0': 'abcdef', '1': 'bc', '2': 'abdeg', '3': 'abcdg', '4': 'bcfg', '5': 'acdfg', '6': 'acdefg', '7': 'abc', '8': 'abcdefg', '9': 'abcdfg', '-': 'g' };
+var on = '#1E2618', off = 'rgba(30,38,24,0.09)';
+return str.split('').map(function (ch) {
+var lit = MAP[ch] || '', o = { w: Math.round(H * 0.56), h: H };
+'abcdefg'.split('').forEach(function (k) { o[k] = lit.indexOf(k) >= 0 ? on : off; });
+return o;
+});
+}
+renderVals() {
+var self = this, n = this.state.night;
+var hr = [['現在', 10], ['15', 40], ['16', 70], ['17', 65], ['18', 50], ['19', 30], ['20', 20], ['21', 10]];
+return {
+t: this.theme(n),
+hh: this.seg('14', 24), mm: this.seg('20', 24), tt: this.seg('24', 96),
+metrics: [
+{ k: '降雨機率', v: '70%', s: '15–17 時' },
+{ k: '濕度', v: '68%', s: '略悶' },
+{ k: '風', v: '12', s: 'km/h 東北' },
+{ k: '紫外線', v: '4', s: '中等' },
+{ k: '空氣品質', v: '42', s: 'AQI 良好' }
+],
+hours: hr.map(function (x, j) { return { t: x[0], r: x[1], px: Math.max(6, Math.round(x[1] * 1.05)), delay: (0.3 + j * 0.08).toFixed(2) }; }),
+lightStr: n ? 'true' : 'false',
+toggleLight: function () { self.setState({ night: !self.state.night }); }
+};
+}
+}
+</script>
+</body>
+</html>

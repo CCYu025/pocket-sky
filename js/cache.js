@@ -26,6 +26,11 @@ function isQuotaError(err) {
   );
 }
 
+/** Default max keys per api namespace. */
+export const DEFAULT_MAX_LOCATIONS = 5;
+/** Default per-api overrides: place searches (several variants each) keep more entries. */
+export const DEFAULT_LIMITS = Object.freeze({ geocoding: 30 });
+
 /**
  * Default time-to-live values in milliseconds.
  * @type {{forecast: number, air: number, geocoding: number}}
@@ -92,10 +97,26 @@ function parseEntry(raw) {
  * @param {object} [options]
  * @param {Storage|undefined} [options.storage] getItem/setItem/removeItem/key/length; may be undefined or throw.
  * @param {() => number} [options.now] Clock returning epoch ms.
- * @param {number} [options.maxLocationsPerApi=5] Max keys kept per api namespace.
+ * @param {number|Object<string, number>} [options.maxLocationsPerApi] Max keys kept per api namespace: a number applies
+ *   to every api; an object overrides per api (`{ geocoding: 30 }`, key `default` for the rest; unnamed apis keep
+ *   `DEFAULT_MAX_LOCATIONS` = 5). Default `{ geocoding: 30 }`: one multi-variant place search writes up to 4
+ *   geocoding entries, which must not push the few forecast-sized slots out.
  * @returns {{get: (key: string) => ({value: *, savedAt: number, fresh: boolean}|null), set: (key: string, value: *, ttlMs: number) => void, remove: (key: string) => void}}
  */
-export function createCache({ storage, now = () => Date.now(), maxLocationsPerApi = 5 } = {}) {
+export function createCache({ storage, now = () => Date.now(), maxLocationsPerApi = DEFAULT_LIMITS } = {}) {
+  /**
+   * Max entries of an api namespace (`om:v1:{api}:`).
+   * @param {string|null} ns
+   * @returns {number}
+   */
+  function limitOf(ns) {
+    const ok = (v) => typeof v === "number" && Number.isFinite(v) && v >= 1;
+    if (ok(maxLocationsPerApi)) return Math.floor(maxLocationsPerApi);
+    const api = ns ? ns.slice(PREFIX.length, -1) : "";
+    const v = maxLocationsPerApi?.[api] ?? maxLocationsPerApi?.default;
+    return ok(v) ? Math.floor(v) : DEFAULT_MAX_LOCATIONS;
+  }
+
   /**
    * Collect all storage keys within an api namespace prefix.
    * @param {string} ns
@@ -130,9 +151,9 @@ export function createCache({ storage, now = () => Date.now(), maxLocationsPerAp
     },
     /**
      * Write an entry and evict the oldest in the same api namespace so at most
-     * `maxLocationsPerApi` remain. If `setItem` fails with a quota error, the
+     * the api's limit remain. If `setItem` fails with a quota error, the
      * oldest other entry in the namespace is evicted and the write retried, at
-     * most `maxLocationsPerApi` times; any other error gives up without
+     * most that limit times; any other error gives up without
      * evicting. Payloads over `MAX_ENTRY_CHARS` are skipped. Never throws.
      * @param {string} key
      * @param {*} value JSON-serialisable value.
@@ -149,6 +170,7 @@ export function createCache({ storage, now = () => Date.now(), maxLocationsPerAp
       }
       if (payload.length > MAX_ENTRY_CHARS) return; // can never fit: evict nothing
       const ns = namespaceOf(key);
+      const limit = limitOf(ns);
       /** @returns {Array<{k: string, savedAt: number}>} Namespace entries, oldest first (corrupt first). */
       const byAge = () =>
         keysIn(ns)
@@ -161,12 +183,12 @@ export function createCache({ storage, now = () => Date.now(), maxLocationsPerAp
             return (a.k === key) - (b.k === key);
           });
       let written = false;
-      for (let attempt = 0; attempt <= maxLocationsPerApi && !written; attempt++) {
+      for (let attempt = 0; attempt <= limit && !written; attempt++) {
         try {
           storage.setItem(key, payload);
           written = true;
         } catch (err) {
-          if (!isQuotaError(err) || attempt === maxLocationsPerApi || !ns) return;
+          if (!isQuotaError(err) || attempt === limit || !ns) return;
           try {
             const victim = byAge().find((e) => e.k !== key);
             if (!victim) return;
@@ -178,9 +200,9 @@ export function createCache({ storage, now = () => Date.now(), maxLocationsPerAp
       }
       try {
         const entries = byAge();
-        if (entries.length <= maxLocationsPerApi) return;
+        if (entries.length <= limit) return;
         // The just-written key loses ties so it is never the one evicted.
-        for (const { k } of entries.slice(0, entries.length - maxLocationsPerApi)) {
+        for (const { k } of entries.slice(0, entries.length - limit)) {
           storage.removeItem(k);
         }
       } catch {

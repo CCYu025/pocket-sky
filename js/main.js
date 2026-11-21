@@ -3,8 +3,11 @@
  * @module main
  */
 import { createCache } from "./cache.js";
-import { getForecast, getAirQuality, ATTRIBUTION } from "./api/openmeteo.js";
-import { createController } from "./app/controller.js";
+import { getForecast, getAirQuality, searchPlaces, ATTRIBUTION } from "./api/openmeteo.js";
+import { createController, placeKey } from "./app/controller.js";
+import { createPicker } from "./app/picker.js";
+import { readPlaces, writePlaces, setTrip } from "./app/places-state.js";
+import { MAX_RESULTS } from "./domain/place-search.js";
 import { browserGeolocate } from "./app/geolocate.js";
 import { resolveTheme, nextPref, readPref, writePref, readLast, writeLast, THEME_COLORS } from "./ui/theme.js";
 import { renderToday } from "./ui/views/today.js";
@@ -46,6 +49,18 @@ const controller = createController({
 const doc = document;
 const root = doc.getElementById("view");
 const locBtn = doc.getElementById("loc-btn");
+
+const picker = createPicker({
+  dialog: doc.getElementById("picker"),
+  storage,
+  controller: {
+    store: controller.store,
+    selectCurrent: (id) => controller.selectCurrent(id),
+  },
+  search: (name) => searchPlaces(name, { cache, now, count: MAX_RESULTS }),
+  onChange: () => render(),
+  fallbackFocus: () => root,
+});
 const lightBtn = doc.querySelector('[data-action="light"]');
 const navLinks = { today: doc.getElementById("nav-today"), outing: doc.getElementById("nav-outing") };
 const themeMeta = doc.querySelector('meta[name="theme-color"]');
@@ -87,10 +102,9 @@ function applyTheme(state) {
   return theme;
 }
 
-let refocusLoc = false;
-
 /**
- * Location button: "定位中…" (busy, disabled) while locating; the default-location
+ * Location button: "定位中…" (busy, but still enabled: it opens the picker, so a slow or never-answering
+ * position never locks the user out of choosing a saved place) while locating; the default-location
  * notice is exposed through the aria-label instead of a visible line.
  * @param {object} state Controller state.
  */
@@ -98,19 +112,17 @@ function renderLocation(state) {
   const locating = Boolean(state.locating);
   const name = locating || !state.location ? "定位中…" : state.location.name;
   locBtn.firstChild.nodeValue = `${name} `;
-  locBtn.setAttribute("aria-label", locating || !state.location ? "定位中…" : `${name}，${state.notice ? `${state.notice}，` : ""}重新定位`);
+  locBtn.setAttribute("aria-label", locating || !state.location ? "定位中…" : `${name}，${state.notice ? `${state.notice}，` : ""}選擇地點`);
   locBtn.setAttribute("aria-busy", String(locating));
-  locBtn.disabled = locating;
-  if (!locating && refocusLoc) {
-    refocusLoc = false;
-    locBtn.focus({ preventScroll: true });
-  }
 }
 
 /** Re-render chrome and the active view. */
 function render() {
   const state = controller.store.get();
   const stored = readOuting(storage); // ps:outing is read once per render
+  const places = readPlaces(storage); // ps:places too
+  const workPlace = places.saved.find((p) => p.id === places.workId) ?? null;
+  const tripPlace = places.saved.find((p) => p.id === places.tripId) ?? null;
   const route = parseRoute(location.hash, stored.scenario); // `#outing` opens the last used scenario
   applyTheme(state);
 
@@ -142,7 +154,7 @@ function render() {
   // the exercise model is computed once per render and shared by the view and the announcer
   const exercise = outing?.scenario === "exercise" && hasData ? exerciseModel(state.vm, now(), outingUi.picked) : null;
 
-  if (outing) renderOuting(root, state, { outing, nowMs: now(), picked: outingUi.picked, flip: outingUi.flip, exercise });
+  if (outing) renderOuting(root, state, { outing, nowMs: now(), picked: outingUi.picked, flip: outingUi.flip, exercise, work: workPlace, trip: tripPlace, saved: places.saved });
   else renderToday(root, state);
 
   // One-shot animations: `boot` once per route visit, shake when a new alert id appears.
@@ -163,7 +175,23 @@ function render() {
   const selection = exercise?.slot ? { key: exercise.slot.hourKey, text: slotLabel(exercise.slot), picked: exercise.picked } : null;
   if (!outing) outingSay.cancel(); // left Outing inside the quiet period: drop the pending message
   outingSay.say(outingAnnouncer.next({ scenario: outing ? outing.scenario : null, selection }));
+
+  // Extra places are fetched lazily, when their view is shown (after this render: ensurePlace updates the store).
+  const want = [];
+  if (outing?.scenario === "commute" && workPlace) want.push(workPlace);
+  if (outing?.scenario === "trip" && tripPlace) want.push(tripPlace);
+  const keep = [workPlace, tripPlace].filter(Boolean).map(placeKey);
+  viewPlaces = { wanted: want.map(placeKey), active: keep };
+  const sig = `${route.key}|${want.map((p) => p.id).join(",")}`;
+  if (sig !== ensured) {
+    ensured = sig;
+    for (const p of want) controller.ensurePlace(p, { keep });
+  }
 }
+
+let ensured = null; // route + places last handed to `ensurePlace`
+/** Extra places the visible view uses (`wanted`) and the work/trip places that are set (`active`), for `refreshIfStale`. */
+let viewPlaces = { wanted: [], active: [] };
 
 /**
  * Select an exercise hour (bar, slider, 最佳 key or arrow keys). Plays the one-shot digit flip
@@ -218,10 +246,19 @@ doc.getElementById("app").addEventListener("click", (e) => {
       render();
       break;
     }
-    case "locate":
-      refocusLoc = true; // a disabled button drops focus; give it back when locating ends
-      controller.refresh({ relocate: true });
+    case "open-picker":
+      picker.open(el.dataset.mode ?? "current", el);
       break;
+    case "trip-pick": {
+      writePlaces(storage, setTrip(readPlaces(storage), el.dataset.id));
+      render();
+      break;
+    }
+    case "retry-place": {
+      const p = readPlaces(storage).saved.find((x) => x.id === el.dataset.id);
+      if (p) controller.ensurePlace(p, { force: true, keep: [placeKey(p)] });
+      break;
+    }
     case "retry":
       controller.refresh();
       break;
@@ -241,12 +278,14 @@ doc.getElementById("app").addEventListener("click", (e) => {
   }
 });
 
-// Commute hour selectors (native <select>) persist to ps:outing.
+// Commute and trip hour selectors (native <select>) persist to ps:outing.
 doc.getElementById("app").addEventListener("change", (e) => {
   const el = e.target;
-  if (!(el instanceof HTMLSelectElement) || !el.dataset.field) return;
+  if (!(el instanceof HTMLSelectElement)) return;
   const o = readOuting(storage);
-  writeOuting(storage, { ...o, commute: { ...o.commute, [el.dataset.field]: Number(el.value) } });
+  if (el.dataset.field) writeOuting(storage, { ...o, commute: { ...o.commute, [el.dataset.field]: Number(el.value) } });
+  else if (el.dataset.trip) writeOuting(storage, { ...o, trip: { ...o.trip, [el.dataset.trip]: Number(el.value) } });
+  else return;
   render();
 });
 
@@ -283,7 +322,7 @@ doc.addEventListener("visibilitychange", () => {
   doc.documentElement.classList.toggle("is-hidden", doc.hidden);
   if (!doc.hidden) {
     controller.tick();
-    controller.refreshIfStale();
+    controller.refreshIfStale(viewPlaces);
   }
 });
 setInterval(() => {

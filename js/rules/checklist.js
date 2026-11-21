@@ -40,8 +40,9 @@ function evalCond(cond, hours) {
  * commute legs combined).
  * @param {object[]} hours Entries of `vm.hours`.
  * @param {object[]} [rules] Defaults to `CHECKLIST_RULES`.
- * @param {{today?: string}} [opts] `today` is the local date `YYYY-MM-DD`; when given, a triggering
- *   hour on another date is shown as `明日 HH:00` in the reason text.
+ * @param {{today?: string, period?: string}} [opts] `today` is the local date `YYYY-MM-DD`; when given, a triggering
+ *   hour on another date is shown as `明日 HH:00` in the reason text. `period` names the evaluated period in
+ *   reasons (default `通勤時段`; a trip passes `出遊時段`).
  * @returns {{id: string, label: string, on: boolean, why: string, hourKey: string|null,
  *   field: string|null, agg: string|null, value: number|null}[]}
  *   Rule order. `hourKey` is the hour of the triggering value (null when off
@@ -49,7 +50,7 @@ function evalCond(cond, hours) {
  *   the triggering condition (all null when off), e.g. `{ field: 'feels', agg: 'min', value: 16 }`.
  *   When every value a rule needs is null (or `hours` is empty), `on` is false and `why` is `資料不足`.
  */
-export function evaluateChecklist(hours, rules = CHECKLIST_RULES, { today = null } = {}) {
+export function evaluateChecklist(hours, rules = CHECKLIST_RULES, { today = null, period = "通勤時段" } = {}) {
   const list = Array.isArray(hours) ? hours.filter(Boolean) : [];
   const agg = (f, fn) => {
     const v = list.map((h) => num(h[f])).filter((x) => x !== null);
@@ -69,6 +70,7 @@ export function evaluateChecklist(hours, rules = CHECKLIST_RULES, { today = null
       on: Boolean(hit),
       hit,
       hours: list,
+      period,
       max: (f) => agg(f, (v) => Math.max(...v)),
       min: (f) => agg(f, (v) => Math.min(...v)),
       range: (f) => agg(f, (v) => Math.max(...v) - Math.min(...v)),

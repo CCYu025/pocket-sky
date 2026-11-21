@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createAnnouncer, createDebouncedAnnouncer, createOutingAnnouncer, STALE_TEXT } from "../../js/ui/announce.js";
+import { createAnnouncer, createDebouncedAnnouncer, createOutingAnnouncer, STALE_TEXT, LOCATION_UPDATED_TEXT } from "../../js/ui/announce.js";
 import { ERROR_TEXT } from "../../js/ui/views/today.js";
 
 const vm = { now: {} };
@@ -121,6 +121,8 @@ test("outing announcer: silent on load, announces scenario changes and user-pick
   assert.equal(a.next({ scenario: "exercise", selection: sel("19", true) }), null, "unchanged");
   assert.equal(a.next({ scenario: "exercise", selection: null }), null, "data went away");
   assert.equal(a.next({ scenario: "commute" }), "外出：通勤");
+  assert.equal(a.next({ scenario: "trip" }), "外出：出遊");
+  assert.equal(a.next({ scenario: "commute" }), "外出：通勤");
   assert.equal(a.next({ scenario: null }), null, "left the screen");
   assert.equal(a.next({ scenario: "commute" }), "外出：通勤", "coming back announces again");
 });
@@ -129,4 +131,16 @@ test("outing announcer: a page load straight into exercise is silent", () => {
   const a = createOutingAnnouncer();
   assert.equal(a.next({ scenario: "exercise", selection: { key: "k", text: "t", picked: false } }), null);
   assert.equal(a.next({ scenario: "exercise", selection: { key: "k2", text: "t2", picked: true } }), "t2");
+});
+
+test("a late GPS fix (locationUpdates increases) announces 已更新為目前位置 once", () => {
+  assert.equal(LOCATION_UPDATED_TEXT, "已更新為目前位置");
+  const a = createAnnouncer();
+  const s = { status: "ready", vm, alert: null, locationUpdates: 0 };
+  assert.equal(a.next(s), null);
+  assert.equal(a.next({ ...s, locationUpdates: 1 }), LOCATION_UPDATED_TEXT);
+  assert.equal(a.next({ ...s, locationUpdates: 1 }), null);
+  assert.equal(a.next({ ...s, locationUpdates: 2 }), LOCATION_UPDATED_TEXT);
+  // a state without the field (older tests, loading) is silent
+  assert.equal(createAnnouncer().next({ status: "ready", vm, alert: null }), null);
 });

@@ -130,6 +130,7 @@ test('missing minutely_15 and daily give empty array / nulls', () => {
   const vm = toViewModel({ forecast: rest, air, nowMs: NOW });
   assert.deepEqual(vm.minutely15, []);
   assert.deepEqual(vm.today, { max: null, min: null, sunrise: null, sunset: null, daylightSeconds: null, uvMax: null });
+  assert.deepEqual(vm.tomorrow, { sunrise: null, sunset: null });
   assert.equal(vm.hours.length, 24);
   assertClean(vm);
 });
@@ -285,4 +286,16 @@ test('offset +20700 (+05:45): minutes offset and day rollover', () => {
   assert.equal(vm.location.utcOffsetSeconds, 20700);
   const later = toViewModel({ forecast: f, nowMs: Date.UTC(2026, 10, 21, 18, 50) }); // 00:35 local
   assert.equal(later.now.hourKey, '2026-11-22T00:00');
+});
+
+test('tomorrow carries the next day\'s sunrise and sunset (date-only daily.time joined by local date)', () => {
+  const vm = toViewModel({ forecast, air, nowMs: NOW });
+  const d = forecast.daily.time.indexOf('2026-11-22');
+  assert.ok(d >= 0, 'the fixture holds tomorrow');
+  assert.equal(vm.tomorrow.sunrise, forecast.daily.sunrise[d]);
+  assert.equal(vm.tomorrow.sunset, forecast.daily.sunset[d]);
+  assert.match(vm.tomorrow.sunrise, /^2026-11-22T\d\d:\d\d$/);
+  // the last day in the data has no tomorrow
+  const last = toViewModel({ forecast, air, nowMs: Date.UTC(2026, 10, 22, 6, 20) });
+  assert.deepEqual(last.tomorrow, { sunrise: null, sunset: null });
 });

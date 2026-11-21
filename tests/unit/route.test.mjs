@@ -12,13 +12,14 @@ test("#outing opens the last used scenario (default commute)", () => {
   assert.deepEqual(parseRoute("#outing"), { name: "outing", scenario: "commute", key: "outing/commute" });
   assert.equal(parseRoute("#outing", "exercise").scenario, "exercise");
   assert.equal(parseRoute("#outing/", "exercise").scenario, "exercise", "trailing slash");
-  assert.equal(parseRoute("#outing", "trip").scenario, "commute", "an invalid last scenario falls back to commute");
+  assert.equal(parseRoute("#outing", "trip").scenario, "trip", "出遊 can be the last used scenario");
+  assert.equal(parseRoute("#outing", "nonsense").scenario, "commute", "an invalid last scenario falls back to commute");
 });
 
 test("explicit scenarios win over the last used one; unknown ones fall back to it", () => {
   assert.deepEqual(parseRoute("#outing/exercise", "commute"), { name: "outing", scenario: "exercise", key: "outing/exercise" });
   assert.equal(parseRoute("#outing/commute", "exercise").scenario, "commute");
-  assert.equal(parseRoute("#outing/trip", "exercise").scenario, "exercise", "出遊 is not a route yet");
+  assert.deepEqual(parseRoute("#outing/trip", "exercise"), { name: "outing", scenario: "trip", key: "outing/trip" });
   assert.equal(parseRoute("#outing/nonsense/more", "exercise").name, "today");
   assert.equal(parseRoute("#outing/", undefined).scenario, "commute");
 });
@@ -26,4 +27,5 @@ test("explicit scenarios win over the last used one; unknown ones fall back to i
 test("scenarioHref builds chip links", () => {
   assert.equal(scenarioHref("commute"), "#outing/commute");
   assert.equal(scenarioHref("exercise"), "#outing/exercise");
+  assert.equal(scenarioHref("trip"), "#outing/trip");
 });

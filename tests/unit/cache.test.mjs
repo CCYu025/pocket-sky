@@ -400,3 +400,68 @@ test("quota detected via legacy code 22 / Firefox name / code 1014", () => {
     assert.equal(c.get(key).value, "new");
   }
 });
+
+// ---- per-api limits -------------------------------------------------------------------------
+
+test("default limits: geocoding keeps 30 entries (a multi-variant search must not evict the cache), other apis keep 5", () => {
+  const storage = new FakeStorage();
+  const now = clock(1000);
+  const c = createCache({ storage, now });
+  const geo = (i) => `om:v1:geocoding:zh:8:q${i}`;
+  for (let i = 0; i < 32; i++) {
+    c.set(geo(i), i, 1000);
+    now.advance(1);
+  }
+  const kept = [...Array(32).keys()].filter((i) => c.get(geo(i)));
+  assert.equal(kept.length, 30);
+  assert.deepEqual([kept[0], kept.at(-1)], [2, 31], "oldest two evicted");
+  for (let i = 0; i < 8; i++) {
+    c.set(cacheKey("forecast", i, i), i, 1000);
+    now.advance(1);
+  }
+  assert.equal(storage.length, 30 + 5, "forecast is still trimmed to 5 and does not touch geocoding");
+});
+
+test("a place search writes up to 4 variant entries without pushing out earlier searches", () => {
+  const storage = new FakeStorage();
+  const now = clock(1000);
+  const c = createCache({ storage, now });
+  for (let s = 0; s < 5; s++) {
+    for (const v of ["", "臺", "市", "臺市"]) {
+      c.set(`om:v1:geocoding:zh:8:s${s}${v}`, [], 1000);
+      now.advance(1);
+    }
+  }
+  assert.equal(storage.length, 20, "5 searches x 4 variants all stay (the old limit of 5 kept barely one search)");
+  assert.notEqual(c.get("om:v1:geocoding:zh:8:s0"), null);
+});
+
+test("maxLocationsPerApi object: per-api overrides, `default` for the rest, unnamed falls back to 5", () => {
+  const storage = new FakeStorage();
+  const now = clock(1000);
+  const c = createCache({ storage, now, maxLocationsPerApi: { air: 2, default: 3 } });
+  for (let i = 0; i < 6; i++) {
+    c.set(cacheKey("air", i, i), i, 1000);
+    c.set(cacheKey("forecast", i, i), i, 1000);
+    c.set(`om:v1:geocoding:zh:8:q${i}`, i, 1000);
+    now.advance(1);
+  }
+  const count = (ns) => [...Array(storage.length).keys()].filter((i) => storage.key(i).startsWith(`om:v1:${ns}:`)).length;
+  assert.deepEqual([count("air"), count("forecast"), count("geocoding")], [2, 3, 3]);
+  const d = createCache({ storage: new FakeStorage(), now, maxLocationsPerApi: { air: 2 } });
+  for (let i = 0; i < 8; i++) d.set(cacheKey("forecast", i, i), i, 1000);
+  assert.equal(d.get(cacheKey("forecast", 2, 2)), null);
+  assert.notEqual(d.get(cacheKey("forecast", 3, 3)), null, "unnamed api keeps the default of 5");
+});
+
+test("a number still applies to every api; invalid values fall back to the default", () => {
+  const now = clock(1000);
+  const s1 = new FakeStorage();
+  const c = createCache({ storage: s1, now, maxLocationsPerApi: 2 });
+  for (let i = 0; i < 5; i++) { c.set(`om:v1:geocoding:zh:8:q${i}`, i, 1000); now.advance(1); }
+  assert.equal(s1.length, 2, "the number wins over the geocoding default");
+  const s2 = new FakeStorage();
+  const bad = createCache({ storage: s2, now, maxLocationsPerApi: { forecast: 0, default: "x" } });
+  for (let i = 0; i < 8; i++) { bad.set(cacheKey("forecast", i, i), i, 1000); now.advance(1); }
+  assert.equal(s2.length, 5);
+});

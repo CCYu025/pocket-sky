@@ -591,7 +591,7 @@ test("geolocation granted uses the device position; denied falls back with a not
   // the notice is not repeated as a visible line; it lives in the button's accessible name
   assert.equal(await denied.page.locator(".notice").count(), 0);
   assert.equal(await denied.page.getByText("使用預設地點：臺中").count(), 0);
-  assert.equal(await denied.page.locator("#loc-btn").getAttribute("aria-label"), "臺中（預設），使用預設地點：臺中，重新定位");
+  assert.equal(await denied.page.locator("#loc-btn").getAttribute("aria-label"), "臺中（預設），使用預設地點：臺中，選擇地點");
   assert.ok(denied.requests.some((u) => /latitude=24\.16&longitude=120\.64/.test(u)));
   noErrors(denied);
 });

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Pocket Sky 外出：運動（方向 A）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&amp;family=Noto+Sans+TC:wght@500;900&amp;display=swap">
+<style>
+body{margin:0}
+a{color:inherit}a:hover{opacity:.8}
+input[type=range]{width:100%;height:44px;margin:0;accent-color:#000000}
+@keyframes flipA{from{transform:rotateX(80deg);opacity:.2}to{transform:none;opacity:1}}
+@keyframes flipB{from{transform:rotateX(80deg);opacity:.2}to{transform:none;opacity:1}}
+@keyframes grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes boot{0%{opacity:0}25%{opacity:1}35%{opacity:.25}50%{opacity:1}}
+.flipA{animation:flipA .22s ease-out}
+.flipB{animation:flipB .22s ease-out}
+.bar{transform-origin:bottom;animation:grow .6s cubic-bezier(.3,1.3,.5,1) both}
+.boot{animation:boot .9s ease-out 1 both}
+.key{transition:transform .08s,box-shadow .08s}
+.key:active{transform:translate(4px,4px);box-shadow:none !important}
+@media (prefers-reduced-motion: reduce){.flipA,.flipB,.bar,.boot{animation:none}}
+</style>
+</helmet>
+<div style="width: 390px; height: 1000px; box-sizing: border-box; background: {{t.shell}}; color: {{t.ink}}; font-family: 'Noto Sans TC', sans-serif; padding: 16px 16px 0; display: flex; flex-direction: column; gap: 14px; transition: background .3s, color .3s">
+
+<div style="display: flex; justify-content: space-between; align-items: center; min-height: 44px">
+<span style="font-family: 'Share Tech Mono', monospace; font-size: 15px; letter-spacing: 3px">POCKET SKY</span>
+<span style="font-size: 20px; font-weight: 900">外出</span>
+</div>
+
+<div role="group" aria-label="情境" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+<a class="key" href="ACommute.dc.html" style="min-height: 48px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-size: 16px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center">通勤</a>
+<a class="key" href="AExercise.dc.html" aria-current="page" style="min-height: 48px; border: 3px solid {{t.line}}; background: #A3E635; color: #000000; box-shadow: {{t.sh}}; font-size: 16px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center">運動</a>
+<a class="key" href="ATrip.dc.html" style="min-height: 48px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-size: 16px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 4px">出遊 <span style="font-size: 11px; font-weight: 500; border: 1.5px solid {{t.line}}; padding: 0 3px">v2</span></a>
+</div>
+
+<section aria-label="選定時段" aria-live="polite" style="border: 3px solid {{t.line}}; background: {{t.card}}; box-shadow: {{t.shBig}}; padding: 12px">
+<div class="boot" style="border: 3px solid #000000; border-radius: 4px; background: {{t.lcd}}; box-shadow: {{t.glow}}; padding: 12px 14px; color: #1E2618; display: flex; flex-direction: column; gap: 8px; transition: background .3s, box-shadow .3s">
+<div style="display: flex; justify-content: space-between; font-family: 'Share Tech Mono', monospace; font-size: 13px"><span>TIME</span><span>SCORE</span></div>
+<div style="display: flex; justify-content: space-between; align-items: center">
+<div class="{{flipCls}}" role="img" aria-label="{{timeAria}}" style="display: flex; align-items: center; gap: 4px; transform: skewX(-6deg)">
+<sc-for list="{{hh}}" as="d" hint-placeholder-count="2">
+<svg aria-hidden="true" width="{{d.w}}" height="{{d.h}}" viewBox="0 0 56 100"><polygon points="10,6 16,0 40,0 46,6 40,12 16,12" fill="{{d.a}}"></polygon><polygon points="50,10 56,16 56,40 50,46 44,40 44,16" fill="{{d.b}}"></polygon><polygon points="50,54 56,60 56,84 50,90 44,84 44,60" fill="{{d.c}}"></polygon><polygon points="10,94 16,88 40,88 46,94 40,100 16,100" fill="{{d.d}}"></polygon><polygon points="6,54 12,60 12,84 6,90 0,84 0,60" fill="{{d.e}}"></polygon><polygon points="6,10 12,16 12,40 6,46 0,40 0,16" fill="{{d.f}}"></polygon><polygon points="10,50 16,44 40,44 46,50 40,56 16,56" fill="{{d.g}}"></polygon></svg>
+</sc-for>
+<span style="display: flex; flex-direction: column; gap: 12px"><span style="width: 6px; height: 6px; background: #1E2618"></span><span style="width: 6px; height: 6px; background: #1E2618"></span></span>
+<sc-for list="{{m0}}" as="d" hint-placeholder-count="2">
+<svg aria-hidden="true" width="{{d.w}}" height="{{d.h}}" viewBox="0 0 56 100"><polygon points="10,6 16,0 40,0 46,6 40,12 16,12" fill="{{d.a}}"></polygon><polygon points="50,10 56,16 56,40 50,46 44,40 44,16" fill="{{d.b}}"></polygon><polygon points="50,54 56,60 56,84 50,90 44,84 44,60" fill="{{d.c}}"></polygon><polygon points="10,94 16,88 40,88 46,94 40,100 16,100" fill="{{d.d}}"></polygon><polygon points="6,54 12,60 12,84 6,90 0,84 0,60" fill="{{d.e}}"></polygon><polygon points="6,10 12,16 12,40 6,46 0,40 0,16" fill="{{d.f}}"></polygon><polygon points="10,50 16,44 40,44 46,50 40,56 16,56" fill="{{d.g}}"></polygon></svg>
+</sc-for>
+</div>
+<div class="{{flipCls}}" role="img" aria-label="{{scoreAria}}" style="display: flex; gap: 4px; transform: skewX(-6deg)">
+<sc-for list="{{sc}}" as="d" hint-placeholder-count="2">
+<svg aria-hidden="true" width="{{d.w}}" height="{{d.h}}" viewBox="0 0 56 100"><polygon points="10,6 16,0 40,0 46,6 40,12 16,12" fill="{{d.a}}"></polygon><polygon points="50,10 56,16 56,40 50,46 44,40 44,16" fill="{{d.b}}"></polygon><polygon points="50,54 56,60 56,84 50,90 44,84 44,60" fill="{{d.c}}"></polygon><polygon points="10,94 16,88 40,88 46,94 40,100 16,100" fill="{{d.d}}"></polygon><polygon points="6,54 12,60 12,84 6,90 0,84 0,60" fill="{{d.e}}"></polygon><polygon points="6,10 12,16 12,40 6,46 0,40 0,16" fill="{{d.f}}"></polygon><polygon points="10,50 16,44 40,44 46,50 40,56 16,56" fill="{{d.g}}"></polygon></svg>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; justify-content: space-between; align-items: baseline; border-top: 2px solid rgba(30,38,24,0.3); padding-top: 6px">
+<span style="font-size: 18px; font-weight: 900">{{cur.verdict}}</span>
+<span style="font-size: 13px; font-weight: 500">{{cur.advice}}</span>
+</div>
+</div>
+</section>
+
+<section aria-label="選擇時間" style="border: 3px solid {{t.line}}; background: {{t.card}}; box-shadow: {{t.sh}}; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; justify-content: space-between; align-items: center">
+<span style="font-size: 14px; font-weight: 900">點長條選時間</span>
+<button class="key" onClick="{{goBest}}" style="min-height: 44px; padding: 0 12px; border: 3px solid {{t.line}}; background: #A3E635; color: #000000; box-shadow: {{t.sh}}; font-family: inherit; font-size: 13px; font-weight: 900">最佳 {{bestLabel}}</button>
+</div>
+<div style="height: 84px; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; align-items: end">
+<sc-for list="{{bars}}" as="b" hint-placeholder-count="10">
+<button onClick="{{b.pick}}" aria-label="{{b.aria}}" aria-pressed="{{b.sel}}" style="height: 84px; padding: 0; border: 0; background: transparent; display: flex; align-items: flex-end">
+<span class="bar" style="width: 100%; height: {{b.px}}px; border: 2px solid {{t.line}}; background: {{b.c}}; box-shadow: {{b.ring}}; animation-delay: {{b.delay}}s"></span>
+</button>
+</sc-for>
+</div>
+<div style="display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; text-align: center; font-family: 'Share Tech Mono', monospace; font-size: 12px">
+<sc-for list="{{bars}}" as="b" hint-placeholder-count="10"><span style="font-weight: {{b.fw}}">{{b.t}}</span></sc-for>
+</div>
+<label style="display: block">
+<span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">以滑桿選擇運動時間（整點）</span>
+<input type="range" min="14" max="23" step="1" value="{{hour}}" onChange="{{onSlide}}">
+</label>
+<span style="font-size: 12px; font-weight: 500; color: {{t.sub}}">現在 14:20 → 從 14:00 起算・22 時後延伸至明日 06:00</span>
+</section>
+
+<section aria-label="該時段指標" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+<sc-for list="{{cur.metrics}}" as="m" hint-placeholder-count="6">
+<div style="border: 3px solid {{t.line}}; background: {{t.card}}; box-shadow: {{t.sh}}; padding: 8px 10px; display: flex; flex-direction: column">
+<span style="font-size: 12px; font-weight: 500; color: {{t.sub}}">{{m.k}}</span>
+<span style="font-size: 18px; font-weight: 900">{{m.v}}</span>
+</div>
+</sc-for>
+</section>
+
+<nav aria-label="主選單" style="margin-top: auto; margin-bottom: 20px; display: grid; grid-template-columns: 1fr 1.3fr 1.3fr; gap: 10px">
+<button class="key" onClick="{{toggleLight}}" aria-pressed="{{lightStr}}" style="min-height: 56px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-family: 'Share Tech Mono', monospace; font-size: 15px">LIGHT</button>
+<a class="key" href="AToday.dc.html" style="min-height: 56px; border: 3px solid {{t.line}}; background: {{t.card}}; color: {{t.ink}}; box-shadow: {{t.sh}}; font-size: 17px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center; box-sizing: border-box">今天</a>
+<a class="key" href="ACommute.dc.html" aria-current="page" style="min-height: 56px; border: 3px solid {{t.line}}; background: #FFD23F; color: #000000; box-shadow: {{t.sh}}; font-size: 17px; font-weight: 900; text-decoration: none; display: flex; align-items: center; justify-content: center; box-sizing: border-box">外出</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1000}}'>
+class Component extends DCLogic {
+constructor(props) { super(props); this.state = { night: false, hour: 14, flip: false }; }
+theme(n) {
+return n
+? { shell: '#141414', ink: '#F5F0E0', sub: '#C9C2B0', card: '#1F1F1F', line: '#FFD23F', sh: '4px 4px 0 #FFD23F', shBig: '6px 6px 0 #FFD23F', lcd: '#8FE3CC', glow: '0 0 22px rgba(143,227,204,0.45), inset 0 3px 0 rgba(0,0,0,0.22)' }
+: { shell: '#FFF7D6', ink: '#000000', sub: '#3D3A33', card: '#FFFFFF', line: '#000000', sh: '4px 4px 0 #000000', shBig: '6px 6px 0 #000000', lcd: '#B7C3A3', glow: 'inset 0 3px 0 rgba(0,0,0,0.22)' };
+}
+seg(str, H) {
+var MAP = { '0': 'abcdef', '1': 'bc', '2': 'abdeg', '3': 'abcdg', '4': 'bcfg', '5': 'acdfg', '6': 'acdefg', '7': 'abc', '8': 'abcdefg', '9': 'abcdfg', '-': 'g' };
+var on = '#1E2618', off = 'rgba(30,38,24,0.09)';
+return str.split('').map(function (ch) {
+var lit = MAP[ch] || '', o = { w: Math.round(H * 0.56), h: H };
+'abcdefg'.split('').forEach(function (k) { o[k] = lit.indexOf(k) >= 0 ? on : off; });
+return o;
+});
+}
+pickHour(h) { this.setState({ hour: h, flip: !this.state.flip }); }
+renderVals() {
+var self = this, n = this.state.night, t = this.theme(n), hour = this.state.hour;
+// [hour, temp, feels, humidity, rain%, wind, uv, aqi, score]
+var rows = [
+[14, 24, 26, 66, 10, 10, 4, 42, 62], [15, 24, 25, 68, 40, 12, 3, 42, 48], [16, 22, 23, 75, 70, 16, 2, 40, 25],
+[17, 21, 21, 78, 65, 18, 1, 38, 30], [18, 20, 20, 76, 50, 14, 0, 38, 45], [19, 19, 19, 72, 30, 10, 0, 36, 68],
+[20, 19, 19, 70, 20, 8, 0, 35, 78], [21, 18, 18, 70, 10, 6, 0, 35, 84], [22, 18, 17, 72, 10, 6, 0, 36, 80],
+[23, 18, 17, 74, 0, 5, 0, 37, 72]
+];
+var best = rows.reduce(function (a, b) { return b[8] > a[8] ? b : a; });
+var cur = rows.filter(function (r) { return r[0] === hour; })[0];
+function lvl(s) { return s >= 75 ? { c: t.ink, v: '適合運動' } : (s >= 50 ? { c: '#8A8577', v: '普通' } : { c: '#FF6B9A', v: '不建議' }); }
+var advice = cur[4] >= 50 ? '雨 ' + cur[4] + '%，改室內' : (cur[2] >= 26 ? '偏熱，多補水' : (cur[8] >= 75 ? '涼爽少雨' : '留意降雨'));
+var hs = String(hour).padStart(2, '0');
+return {
+t: t, hour: hour,
+flipCls: this.state.flip ? 'flipA' : 'flipB',
+hh: this.seg(hs, 50), m0: this.seg('00', 50), sc: this.seg(String(cur[8]), 50),
+timeAria: '時間 ' + hs + ':00', scoreAria: '評分 ' + cur[8],
+bestLabel: best[0] + ':00',
+goBest: function () { self.pickHour(best[0]); },
+onSlide: function (e) { self.pickHour(Number(e.target.value)); },
+bars: rows.map(function (r, j) {
+var sel = r[0] === hour;
+return {
+t: r[0], px: Math.max(8, Math.round(r[8] * 0.8)), c: lvl(r[8]).c,
+ring: sel ? '0 0 0 3px ' + t.shell + ', 0 0 0 6px ' + t.line : 'none',
+fw: sel ? 900 : 400, sel: sel ? 'true' : 'false',
+aria: r[0] + ' 時，評分 ' + r[8], delay: (0.3 + j * 0.06).toFixed(2),
+pick: function () { self.pickHour(r[0]); }
+};
+}),
+cur: {
+verdict: lvl(cur[8]).v, advice: advice,
+metrics: [
+{ k: '溫度 / 體感', v: cur[1] + '° / ' + cur[2] + '°' }, { k: '濕度', v: cur[3] + '%' }, { k: '降雨機率', v: cur[4] + '%' },
+{ k: '風速', v: cur[5] + ' km/h' }, { k: '紫外線', v: String(cur[6]) }, { k: '空氣品質', v: 'AQI ' + cur[7] }
+]
+},
+lightStr: n ? 'true' : 'false',
+toggleLight: function () { self.setState({ night: !self.state.night }); }
+};
+}
+}
+</script>
+</body>
+</html>
