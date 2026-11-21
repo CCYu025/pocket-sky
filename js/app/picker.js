@@ -36,9 +36,11 @@ function selectorOf(el) {
  * @param {typeof setTimeout} [deps.setTimer] Defaults call `globalThis.setTimeout` as a method: an unbound `setTimeout` loses its `this`
  *   under Playwright's fake clock, so `clearTimeout` would silently not clear.
  * @param {typeof clearTimeout} [deps.clearTimer]
+ * @param {(dialog: HTMLElement, model: object) => void} [deps.renderView] Renders the dialog contents (default `renderPicker`;
+ *   unit tests pass a no-op because they have no DOM).
  * @returns {{open: (mode?: 'current'|'work'|'trip', opener?: Element|null) => void, close: () => void, isOpen: () => boolean, opener: () => (Element|null), getState: () => object}}
  */
-export function createPicker({ dialog, storage, controller, search, onChange, fallbackFocus = () => null, setTimer = (fn, ms) => globalThis.setTimeout(fn, ms), clearTimer = (id) => globalThis.clearTimeout(id) }) {
+export function createPicker({ dialog, storage, controller, search, onChange, fallbackFocus = () => null, setTimer = (fn, ms) => globalThis.setTimeout(fn, ms), clearTimer = (id) => globalThis.clearTimeout(id), renderView = renderPicker }) {
   let state = initialPicker("current");
   let seq = 0; // search generation: only the latest search may update the state
   let timer = null;
@@ -49,7 +51,7 @@ export function createPicker({ dialog, storage, controller, search, onChange, fa
   const input = () => dialog.querySelector("#pk-q");
 
   function render() {
-    renderPicker(dialog, pickerModel(state, readPlaces(storage), controller.store.get().current));
+    renderView(dialog, pickerModel(state, readPlaces(storage), controller.store.get().current));
   }
   function dispatch(action) {
     state = pickerReduce(state, action);
@@ -68,7 +70,7 @@ export function createPicker({ dialog, storage, controller, search, onChange, fa
     dispatch({ type: "search" });
     try {
       const { results, usedQuery } = await searchWithFallback(q, search);
-      if (mine === seq) dispatch({ type: "done", results, usedQuery });
+      if (mine === seq) dispatch({ type: "done", results, usedQuery, query: q });
     } catch {
       if (mine === seq) dispatch({ type: "error" });
     }
@@ -135,9 +137,17 @@ export function createPicker({ dialog, storage, controller, search, onChange, fa
     focusEl(input());
   }
 
+  /** True when a click point lies outside the dialog's border box (the `::backdrop`). */
+  function outside(e) {
+    const r = dialog.getBoundingClientRect();
+    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  }
+
   dialog.addEventListener("click", (e) => {
-    if (e.target === dialog) return close(); // backdrop
-    const el = e.target instanceof Element ? e.target.closest("[data-action]") : null;
+    // A click on the backdrop targets the <dialog> itself, but so does one on its own padding or the gaps between
+    // blocks: only a point outside the dialog's rectangle closes it.
+    if (e.target === dialog) return outside(e) ? close() : undefined;
+    const el = typeof e.target?.closest === "function" ? e.target.closest("[data-action]") : null;
     if (!el || !dialog.contains(el)) return;
     switch (el.dataset.action) {
       case "pk-close": return close();
@@ -152,18 +162,38 @@ export function createPicker({ dialog, storage, controller, search, onChange, fa
     }
   });
 
-  dialog.addEventListener("input", (e) => {
-    if (!(e.target instanceof HTMLInputElement) || e.target.id !== "pk-q") return;
+  const isSearchInput = (t) => Boolean(t) && t.id === "pk-q" && t.tagName === "INPUT";
+
+  /** The user's text changed for good: drop the older search and debounce a new one. */
+  function typed(value) {
     if (timer !== null) clearTimer(timer);
     timer = null;
     seq++; // an older in-flight search must not overwrite what the user is typing now
-    dispatch({ type: "query", value: e.target.value });
-    const typed = seq; // a timer that survives a later keystroke (or a failed clear) finds `seq` moved on and does nothing
-    if (e.target.value.trim()) timer = setTimer(() => typed === seq && runSearch(), SEARCH_DEBOUNCE_MS);
+    dispatch({ type: "query", value });
+    const mine = seq; // a timer that survives a later keystroke (or a failed clear) finds `seq` moved on and does nothing
+    if (value.trim()) timer = setTimer(() => mine === seq && runSearch(), SEARCH_DEBOUNCE_MS);
+  }
+
+  dialog.addEventListener("input", (e) => {
+    if (!isSearchInput(e.target)) return;
+    if (e.isComposing) {
+      // IME composition (e.g. zhuyin `ㄊㄞˊ`): the text is not final, so no search and no "not found" until compositionend.
+      if (timer !== null) clearTimer(timer);
+      timer = null;
+      seq++;
+      return;
+    }
+    typed(e.target.value);
+  });
+
+  // Browsers differ in whether the last `input` (isComposing false) comes before or after `compositionend`; `typed` is idempotent.
+  dialog.addEventListener("compositionend", (e) => {
+    if (isSearchInput(e.target)) typed(e.target.value);
   });
 
   dialog.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && e.target instanceof HTMLInputElement && e.target.id === "pk-q") {
+    if (e.key === "Enter" && isSearchInput(e.target)) {
+      if (e.isComposing || e.keyCode === 229) return; // Enter that commits an IME candidate is not a search
       e.preventDefault();
       runSearch();
       return;

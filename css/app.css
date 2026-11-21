@@ -34,7 +34,8 @@ main:focus { outline: none; }
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .topbar[hidden] { display: none; }
 .brand { font-family: var(--font-mono); font-size: 15px; letter-spacing: 3px; }
-.loc-btn { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.key.loc-btn { max-width: 60%; padding: 0 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loc-btn > span { margin-left: 6px; }
 
 /* ---- keys (buttons with hard shadow) ---- */
 .key {
@@ -362,7 +363,7 @@ main:focus { outline: none; }
 .pk-sub { font-size: 12px; color: var(--sub); }
 .pk-tags { display: inline-flex; gap: 4px; }
 .pk-acts { display: flex; flex-wrap: wrap; gap: 10px; }
-.pk-btn { min-width: 52px; padding: 0 10px; font-size: 14px; }
+.pk-btn { flex: none; white-space: nowrap; min-width: 52px; padding: 0 10px; font-size: 14px; }
 .pk-btn--main { background: var(--accent); color: var(--on-accent); font-weight: 900; }
 .pk-btn--del { margin-left: auto; }
 .pk-done { font-size: 13px; color: var(--sub); flex: none; }

@@ -62,7 +62,8 @@ test("pickerModel: saved rows carry current / work / trip flags; results know wh
   const m = pickerModel({ ...initialPicker("work"), status: "done", results: [lake, { name: "花蓮市", lat: 23.98, lon: 121.6, admin1: "花蓮縣", country: "臺灣" }], usedQuery: "x" }, st, lakeId);
   assert.equal(m.title, "設定公司地點");
   assert.deepEqual(m.saved.map((p) => [p.label, p.current, p.work, p.trip]), [["日月潭・南投縣", true, false, true], ["新竹・新竹縣", false, true, false]]);
-  assert.equal(m.saved[0].sub, "南投縣・海拔 748 m");
+  assert.equal(m.saved[0].sub, "海拔 748 m", "admin1 is in the label, not repeated in the sub line");
+  assert.ok(!m.results[1].sub.includes("花蓮縣"), "nor in a result row");
   assert.deepEqual(m.results.map((r) => [r.label, r.saved]), [["日月潭・南投縣", true], ["花蓮市・花蓮縣", false]]);
   assert.equal(m.count, "已儲存 2 / 5");
   assert.equal(m.gpsCurrent, false);
@@ -89,7 +90,7 @@ test("pickerHtml: real buttons with accessible names, pressed state, keyed block
   assert.match(html, /data-action="pk-use" data-id="gps" aria-pressed="false" aria-label="目前位置：使用裝置定位">/);
   // results: the saved one has no add button, the other does
   assert.match(html, /已儲存<\/span>/);
-  assert.match(html, /data-action="pk-add" data-i="1" aria-label="加入 竹北・新竹縣（新竹縣・臺灣・海拔 31 m）">加入/);
+  assert.match(html, /data-action="pk-add" data-i="1" aria-label="加入 竹北・新竹縣（臺灣・海拔 31 m）">加入/);
   assert.doesNotMatch(html, /data-action="pk-add" data-i="0"/);
   // search field: labelled, type=search, a single persistent live node
   assert.match(html, /<label for="pk-q" class="pk-label">搜尋地點<\/label><input type="search" id="pk-q"/);
@@ -120,4 +121,15 @@ test("entryOf finds a place's controller entry by its forecast cache key", () =>
   assert.equal(entryOf(state, { lat: 1, lon: 1 }), null);
   assert.equal(entryOf(state, null), null);
   assert.equal(entryOf({}, { lat: 1, lon: 1 }), null);
+});
+
+test("lead text says 今天 (not Today); the not-found text names what the user typed", () => {
+  assert.match(pickerModel(initialPicker("current"), emptyPlaces(), "gps").lead, /今天/);
+  for (const m of ["current", "work", "trip"]) assert.doesNotMatch(pickerModel(initialPicker(m), emptyPlaces(), "gps").lead, /Today/);
+  let s = pickerReduce(initialPicker(), { type: "done", results: [], usedQuery: "花蓮市", query: "花蓮" });
+  assert.equal(s.searched, "花蓮");
+  assert.equal(liveText(s), "找不到「花蓮」");
+  assert.equal(liveText(pickerReduce(initialPicker(), { type: "done", results: [], usedQuery: "x" })), "找不到「x」", "older callers without `query`");
+  s = pickerReduce(s, { type: "query", value: "" });
+  assert.equal(s.searched, "");
 });

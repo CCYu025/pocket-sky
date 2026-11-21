@@ -15,6 +15,9 @@ export const DEFAULT_LOCATION = Object.freeze({ lat: 24.16, lon: 120.64 });
 export const GPS_NAME = "目前位置";
 export const DEFAULT_NAME = "臺中（預設）";
 export const DEFAULT_NOTICE = "使用預設地點：臺中";
+export const PREVIOUS_NOTICE = "定位逾時，使用上次位置";
+/** Overall limit for resolving the device position (the permission prompt is not covered by the browser's own timeout). */
+export const GEO_TIMEOUT_MS = 10000;
 
 /**
  * @typedef {object} TodayState
@@ -67,11 +70,16 @@ export function placeKey(place) {
  * @param {() => Promise<{lat:number, lon:number}>} deps.geolocate Rejects when unavailable or denied.
  * @param {typeof fetch} [deps.fetchImpl]
  * @param {{lat:number, lon:number}} [deps.defaultLocation]
- * @returns {{store: object, init: () => Promise<void>, refresh: (opts?: {relocate?: boolean}) => Promise<void>,
+ * @param {typeof setTimeout} [deps.setTimer] Timer for the geolocation timeout (global `setTimeout` called as a method by default).
+ * @param {typeof clearTimeout} [deps.clearTimer]
+ * @returns {{store: object, init: () => Promise<void>, refresh: () => Promise<void>,
  *   selectCurrent: (id: string) => Promise<void>, ensurePlace: (place: object, opts?: {keep?: string[], force?: boolean}) => Promise<void>,
- *   refreshIfStale: () => Promise<void>, tick: () => void, dismissAlert: () => void}}
+ *   refreshIfStale: (opts?: {wanted?: string[], active?: string[]}) => Promise<void>, tick: () => void, dismissAlert: () => void}}
  */
-export function createController({ api, cache, storage, now, geolocate, fetchImpl, defaultLocation = DEFAULT_LOCATION }) {
+export function createController({
+  api, cache, storage, now, geolocate, fetchImpl, defaultLocation = DEFAULT_LOCATION,
+  setTimer = (fn, ms) => globalThis.setTimeout(fn, ms), clearTimer = (id) => globalThis.clearTimeout(id),
+}) {
   /** @type {TodayState} */
   const initial = { status: "loading", vm: null, alert: null, fetchedAt: null, notice: null, error: null, location: null, locating: false, current: "gps", places: {} };
   const store = createStore(initial);
@@ -81,6 +89,7 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
   let loc = null;
   let forecastKey = null;
   let raw = { forecast: null, air: null };
+  let lastGps = null; // last device position of this session (the fallback when a later request times out)
 
   function computeAlert(vm) {
     const nowMs = now();
@@ -112,11 +121,31 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
     if (raw.forecast && (status === "ready" || status === "stale")) rebuild(status);
   }
 
+  /** Device position, or a rejection with `err.timeout` when it takes longer than `GEO_TIMEOUT_MS`. */
+  function geolocateWithin() {
+    return new Promise((resolve, reject) => {
+      const id = setTimer(() => reject(Object.assign(new Error("geolocation timeout"), { timeout: true })), GEO_TIMEOUT_MS);
+      const done = (fn) => (v) => {
+        clearTimer(id);
+        fn(v);
+      };
+      let attempt;
+      try {
+        attempt = Promise.resolve(geolocate()); // called synchronously: callers (and tests) see the request at once
+      } catch (err) {
+        attempt = Promise.reject(err);
+      }
+      attempt.then(done(resolve), done(reject));
+    });
+  }
+
   async function resolveLocation() {
     try {
-      const p = await geolocate();
+      const p = await geolocateWithin();
+      lastGps = { lat: p.lat, lon: p.lon };
       return { location: { lat: p.lat, lon: p.lon, name: GPS_NAME, source: "gps" }, notice: null };
-    } catch {
+    } catch (err) {
+      if (err?.timeout && lastGps) return { location: { ...lastGps, name: GPS_NAME, source: "gps" }, notice: PREVIOUS_NOTICE };
       return {
         location: { ...defaultLocation, name: DEFAULT_NAME, source: "default" },
         notice: DEFAULT_NOTICE,
@@ -220,6 +249,14 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
     store.set({ places });
   }
 
+  /** Forget an extra place: later results of its in-flight load are ignored. */
+  function dropPlace(key) {
+    const rec = extra.get(key);
+    if (rec) rec.gen++;
+    extra.delete(key);
+    setEntry(key, null);
+  }
+
   function rebuildPlace(key, status) {
     const rec = extra.get(key);
     if (!rec?.raw.forecast) return;
@@ -237,6 +274,7 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
     const myGen = ++rec.gen;
     const aKey = cacheKey("air", place.lat, place.lon);
     const prev = store.get().places[key];
+    const wasStale = prev?.status === "stale"; // same rule as the current place: only an already-stale entry stays so while refreshing
     if (!rec.raw.forecast) setEntry(key, { status: "loading", vm: null, error: null, fetchedAt: null });
     else if (prev && prev.status === "error") setEntry(key, { ...prev, status: "stale", error: null });
     let failed = false;
@@ -287,7 +325,8 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
     if (!updated) {
       rec.raw.forecast = forecast[0];
       const entry = cache?.get(key);
-      rebuildPlace(key, failed || (Boolean(entry) && !entry.fresh) ? "stale" : "ready");
+      const refreshing = Boolean(entry) && !entry.fresh; // a stale cache hit has a refresh in flight
+      rebuildPlace(key, failed || (wasStale && refreshing) ? "stale" : "ready");
     }
     await airDone;
   }
@@ -351,7 +390,8 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
      * air requests (own cache keys, own stale-while-revalidate). Idempotent: an in-flight or fresh
      * place is not requested again; a stale or failed one is reloaded. Its state lives in
      * `store.get().places[placeKey(place)]`; failures stay there and never touch the current place.
-     * At most `MAX_EXTRA_PLACES` are kept: the least recently ensured one that is not in `keep` is dropped.
+     * At most `MAX_EXTRA_PLACES` are kept: the least recently ensured one that is not in `keep` is dropped
+     * (an in-flight one too: its result is ignored); if `keep` alone is too long the oldest of it goes.
      * @param {{lat: number, lon: number}} place
      * @param {{keep?: string[], force?: boolean}} [opts] `keep`: place keys that must survive eviction.
      * @returns {Promise<void>}
@@ -369,29 +409,25 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
       } else {
         rec = { place: { lat: place.lat, lon: place.lon }, raw: { forecast: null, air: null }, gen: 0, promise: null };
         extra.set(key, rec);
-        for (const k of [...extra.keys()]) {
-          if (extra.size <= MAX_EXTRA_PLACES) break;
-          if (k === key || keep.includes(k) || extra.get(k).promise) continue;
-          extra.get(k).gen++; // drop results still in flight
-          extra.delete(k);
-          setEntry(k, null);
+        // Oldest first; `keep` spares a key on the first pass only, so the cap holds even when `keep` is too long.
+        // An in-flight record is evicted too: its generation moves on, so its late results are ignored.
+        for (const respectKeep of [true, false]) {
+          for (const k of [...extra.keys()]) {
+            if (extra.size <= MAX_EXTRA_PLACES) break;
+            if (k === key || (respectKeep && keep.includes(k))) continue;
+            dropPlace(k);
+          }
         }
       }
       return startPlace(key);
     },
 
     /**
-     * Reload. With `relocate` the location is resolved again (location button);
-     * otherwise the current location is reused (retry).
-     * @param {{relocate?: boolean}} [opts]
+     * Reload the current location (retry); resolves the position first if nothing was loaded yet.
      * @returns {Promise<void>}
      */
-    async refresh({ relocate = false } = {}) {
-      if (!loc || relocate) {
-        if (relocate) {
-          writeCurrent(storage, "gps");
-          store.set({ current: "gps" });
-        }
+    async refresh() {
+      if (!loc) {
         const r = await locate();
         return r ? load(r.location) : undefined;
       }
@@ -399,15 +435,21 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
     },
 
     /**
-     * Reload only when the cached forecast is not fresh (tab became visible).
+     * Reload when the cached forecast is not fresh (tab became visible): the current place, plus only
+     * the extra places the visible view uses (`wanted`), so Today never refreshes the work or trip place.
+     * When `active` (the keys of the work and trip places that are currently set) is given, extra
+     * records outside `active` and `wanted` are dropped (cleared places).
+     * @param {{wanted?: string[], active?: string[]}} [opts] Place keys (`placeKey`).
      * @returns {Promise<void>}
      */
-    async refreshIfStale() {
+    async refreshIfStale({ wanted = [], active = null } = {}) {
       if (!loc) return;
+      if (active) for (const k of [...extra.keys()]) if (!active.includes(k) && !wanted.includes(k)) dropPlace(k);
       const stalePlaces = [];
-      for (const [key, rec] of extra) {
+      for (const key of wanted) {
+        const rec = extra.get(key);
         const e = store.get().places[key];
-        if (e && !rec.promise && !(e.status === "ready" && cache?.get(key)?.fresh)) stalePlaces.push(key);
+        if (rec && e && !rec.promise && !(e.status === "ready" && cache?.get(key)?.fresh)) stalePlaces.push(key);
       }
       const others = stalePlaces.map(startPlace);
       if (cache?.get(forecastKey)?.fresh && store.get().status === "ready") return void (await Promise.all(others));

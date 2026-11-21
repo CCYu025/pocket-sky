@@ -15,7 +15,7 @@ export const SEARCH_ERROR = "搜尋失敗，請稍後再試";
 
 const TITLES = { current: "選擇地點", work: "設定公司地點", trip: "選擇出遊地點" };
 const LEADS = {
-  current: "點「目前」切換 Today 與運動使用的地點；搜尋後按「加入」儲存地點。",
+  current: "點「目前」切換今天與運動使用的地點；搜尋後按「加入」儲存地點。",
   work: "按已儲存地點的「公司」，或搜尋後按「加入」，作為回家（BACK）的天氣地點。",
   trip: "按已儲存地點的「出遊」，或搜尋後按「加入」，作為出遊目的地。",
 };
@@ -24,16 +24,17 @@ const CJK_RE = /[㐀-鿿]/;
 /**
  * Initial picker state.
  * @param {'current'|'work'|'trip'} [mode='current']
- * @returns {{mode: string, query: string, status: 'idle'|'searching'|'done'|'error', results: object[], usedQuery: string, message: string}}
+ * @returns {{mode: string, query: string, status: 'idle'|'searching'|'done'|'error', results: object[], usedQuery: string, searched: string, message: string}}
+ *   `searched` is the text the user typed for the last finished search (`usedQuery` may be a fallback spelling of it).
  */
 export function initialPicker(mode = "current") {
-  return { mode: MODES.includes(mode) ? mode : "current", query: "", status: "idle", results: [], usedQuery: "", message: "" };
+  return { mode: MODES.includes(mode) ? mode : "current", query: "", status: "idle", results: [], usedQuery: "", searched: "", message: "" };
 }
 
 /**
  * Picker state reducer (pure).
  * - `open {mode}`: fresh state. `query {value}`: typing; an empty (trimmed) query clears the results.
- * - `search`: a search started. `done {results, usedQuery}` / `error`: it finished. Typing or searching
+ * - `search`: a search started. `done {results, usedQuery, query}` (`query`: what the user typed) / `error`: it finished. Typing or searching
  *   clears the action message.
  * - `say {text}`: an action message (added, deleted, ...) for the live text.
  * @param {object} state
@@ -46,13 +47,13 @@ export function pickerReduce(state, action) {
       return initialPicker(action.mode);
     case "query": {
       const value = String(action.value ?? "");
-      if (value.trim() === "") return { ...state, query: value, status: "idle", results: [], usedQuery: "", message: "" };
+      if (value.trim() === "") return { ...state, query: value, status: "idle", results: [], usedQuery: "", searched: "", message: "" };
       return { ...state, query: value, message: "" };
     }
     case "search":
       return { ...state, status: "searching", message: "" };
     case "done":
-      return { ...state, status: "done", results: action.results ?? [], usedQuery: action.usedQuery ?? "" };
+      return { ...state, status: "done", results: action.results ?? [], usedQuery: action.usedQuery ?? "", searched: String(action.query ?? action.usedQuery ?? "") };
     case "error":
       return { ...state, status: "error", results: [] };
     case "say":
@@ -72,7 +73,7 @@ export function liveText(state) {
   if (state.message) return state.message;
   switch (state.status) {
     case "searching": return "搜尋中…";
-    case "done": return state.results.length ? `找到 ${state.results.length} 個地點` : `找不到「${state.usedQuery}」`;
+    case "done": return state.results.length ? `找到 ${state.results.length} 個地點` : `找不到「${state.searched || state.usedQuery}」`;
     case "error": return SEARCH_ERROR;
     default: return "";
   }
@@ -102,7 +103,7 @@ export function pickerModel(state, places, currentId) {
     id: p.id,
     label: placeLabel(p),
     name: p.name,
-    sub: [p.admin1 && p.admin1 !== p.name ? p.admin1 : null, elevText(p.elevation)].filter(Boolean).join("・"),
+    sub: elevText(p.elevation) ?? "", // the label already carries admin1
     current: p.id === currentId,
     work: p.id === places.workId,
     trip: p.id === places.tripId,
@@ -112,7 +113,7 @@ export function pickerModel(state, places, currentId) {
     return {
       index,
       label: p ? placeLabel(p) : String(r?.name ?? ""),
-      sub: [p?.admin1 && p.admin1 !== p.name ? p.admin1 : null, p?.country, elevText(p?.elevation)].filter(Boolean).join("・"),
+      sub: [p?.country, elevText(p?.elevation)].filter(Boolean).join("・"), // the label already carries admin1
       saved: p ? savedIds.has(p.id) : false,
     };
   });

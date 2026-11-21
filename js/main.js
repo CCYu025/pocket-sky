@@ -50,17 +50,12 @@ const doc = document;
 const root = doc.getElementById("view");
 const locBtn = doc.getElementById("loc-btn");
 
-/** After picking the device position the (disabled while locating) location key must get focus back. */
-let refocusLoc = false;
 const picker = createPicker({
   dialog: doc.getElementById("picker"),
   storage,
   controller: {
     store: controller.store,
-    selectCurrent: (id) => {
-      refocusLoc = picker.opener() === locBtn;
-      return controller.selectCurrent(id);
-    },
+    selectCurrent: (id) => controller.selectCurrent(id),
   },
   search: (name) => searchPlaces(name, { cache, now, count: MAX_RESULTS }),
   onChange: () => render(),
@@ -108,7 +103,8 @@ function applyTheme(state) {
 }
 
 /**
- * Location button: "定位中…" (busy, disabled) while locating; the default-location
+ * Location button: "定位中…" (busy, but still enabled: it opens the picker, so a slow or never-answering
+ * position never locks the user out of choosing a saved place) while locating; the default-location
  * notice is exposed through the aria-label instead of a visible line.
  * @param {object} state Controller state.
  */
@@ -118,11 +114,6 @@ function renderLocation(state) {
   locBtn.firstChild.nodeValue = `${name} `;
   locBtn.setAttribute("aria-label", locating || !state.location ? "定位中…" : `${name}，${state.notice ? `${state.notice}，` : ""}選擇地點`);
   locBtn.setAttribute("aria-busy", String(locating));
-  locBtn.disabled = locating;
-  if (!locating && refocusLoc && !picker.isOpen()) {
-    refocusLoc = false;
-    locBtn.focus({ preventScroll: true });
-  }
 }
 
 /** Re-render chrome and the active view. */
@@ -189,15 +180,18 @@ function render() {
   const want = [];
   if (outing?.scenario === "commute" && workPlace) want.push(workPlace);
   if (outing?.scenario === "trip" && tripPlace) want.push(tripPlace);
+  const keep = [workPlace, tripPlace].filter(Boolean).map(placeKey);
+  viewPlaces = { wanted: want.map(placeKey), active: keep };
   const sig = `${route.key}|${want.map((p) => p.id).join(",")}`;
   if (sig !== ensured) {
     ensured = sig;
-    const keep = [workPlace, tripPlace].filter(Boolean).map(placeKey);
     for (const p of want) controller.ensurePlace(p, { keep });
   }
 }
 
 let ensured = null; // route + places last handed to `ensurePlace`
+/** Extra places the visible view uses (`wanted`) and the work/trip places that are set (`active`), for `refreshIfStale`. */
+let viewPlaces = { wanted: [], active: [] };
 
 /**
  * Select an exercise hour (bar, slider, 最佳 key or arrow keys). Plays the one-shot digit flip
@@ -328,7 +322,7 @@ doc.addEventListener("visibilitychange", () => {
   doc.documentElement.classList.toggle("is-hidden", doc.hidden);
   if (!doc.hidden) {
     controller.tick();
-    controller.refreshIfStale();
+    controller.refreshIfStale(viewPlaces);
   }
 });
 setInterval(() => {

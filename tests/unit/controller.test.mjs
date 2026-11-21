@@ -1,7 +1,7 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createController, DEFAULT_LOCATION } from "../../js/app/controller.js";
+import { createController, DEFAULT_LOCATION, GEO_TIMEOUT_MS, DEFAULT_NOTICE } from "../../js/app/controller.js";
 import { createCache, cacheKey } from "../../js/cache.js";
 import { ApiError, __resetInflight } from "../../js/api/openmeteo.js";
 import { ALERTS_KEY } from "../../js/app/alert-state.js";
@@ -42,9 +42,10 @@ function setup({ forecast = dayForecast(), air = fx("air-taichung.json"), geo = 
   return { storage, clock, cache, calls, state, fetchImpl, geo };
 }
 
-async function make(ctx) {
+async function make(ctx, extra = {}) {
   const api = await realApi();
   const c = createController({
+    ...extra,
     api: { getForecast: api.getForecast, getAirQuality: api.getAirQuality },
     cache: ctx.cache,
     storage: ctx.storage,
@@ -372,7 +373,7 @@ test("locating flag is true while the position is resolved", async () => {
   await p;
   assert.equal(m.c.store.get().status, "ready");
 
-  const again = m.c.refresh({ relocate: true });
+  const again = m.c.selectCurrent("gps");
   assert.equal(m.c.store.get().locating, true);
   release({ lat: 24.15, lon: 120.67 });
   await sleep(5);
@@ -387,8 +388,8 @@ test("overlapping relocations: the last request wins, earlier results are ignore
   const resolvers = [];
   const geo = () => new Promise((r) => resolvers.push(r));
   const c = await make({ ...ctx, geo });
-  const first = c.refresh({ relocate: true });
-  const second = c.refresh({ relocate: true });
+  const first = c.selectCurrent("gps");
+  const second = c.selectCurrent("gps");
   assert.equal(resolvers.length, 2);
   resolvers[1]({ lat: 22.0, lon: 121.0 }); // newer request answers first
   await second;
@@ -409,13 +410,13 @@ test("GPS jitter within the same 2-dp cache key does not reload or flash loading
   const seen = [];
   c.store.subscribe((s) => seen.push(s.status));
   pos = { lat: 24.1504, lon: 120.6698 };
-  await c.refresh({ relocate: true });
+  await c.selectCurrent("gps");
   assert.ok(!seen.includes("loading"), `statuses: ${seen}`);
   assert.equal(c.store.get().status, "ready");
   assert.ok(c.store.get().vm);
   // a different place still reloads with a loading state
   pos = { lat: 24.2, lon: 120.67 };
-  await c.refresh({ relocate: true });
+  await c.selectCurrent("gps");
   assert.ok(seen.includes("loading"));
 });
 
@@ -441,4 +442,77 @@ test("alert continuation: a moved event stays visible without restarting the coo
   const s2 = JSON.parse(ctx2.storage.getItem(ALERTS_KEY));
   assert.equal(s2.dismissed["rainJump:2026-11-21T16:00"], true);
   assert.equal(s2.lastShownId.rainJump, "rainJump:2026-11-21T16:00");
+});
+
+// ---------------------------------------------------------------------------
+// Overall geolocation timeout
+// ---------------------------------------------------------------------------
+function fakeTimers() {
+  let next = 1;
+  const t = new Map();
+  return {
+    setTimer: (fn, ms) => { const id = next++; t.set(id, { fn, ms }); return id; },
+    clearTimer: (id) => void t.delete(id),
+    pending: () => [...t.values()],
+    fireAll() { for (const [id, e] of [...t]) { t.delete(id); e.fn(); } },
+  };
+}
+
+test("geolocation: no answer within GEO_TIMEOUT_MS (10 s) falls back to the default place; a late answer is ignored", async () => {
+  assert.equal(GEO_TIMEOUT_MS, 10000);
+  const timers = fakeTimers();
+  let release;
+  const ctx = setup({ geo: () => new Promise((r) => { release = r; }) });
+  const c = await make(ctx, timers);
+  const p = c.init();
+  assert.equal(c.store.get().locating, true);
+  assert.deepEqual(timers.pending().map((e) => e.ms), [GEO_TIMEOUT_MS]);
+  timers.fireAll();
+  await p;
+  const s = c.store.get();
+  assert.equal(s.locating, false);
+  assert.equal(s.status, "ready");
+  assert.equal(s.location.source, "default");
+  assert.equal(s.notice, DEFAULT_NOTICE);
+  release({ lat: 22, lon: 121 }); // too late
+  await new Promise((r) => setImmediate(r));
+  assert.equal(c.store.get().location.source, "default");
+  assert.ok(ctx.calls.every((u) => !/latitude=22\.00/.test(u)));
+});
+
+test("geolocation: a position that arrives in time clears the timer", async () => {
+  const timers = fakeTimers();
+  const c = await make(setup(), timers);
+  await c.init();
+  assert.equal(timers.pending().length, 0);
+  assert.equal(c.store.get().location.source, "gps");
+});
+
+test("geolocation: after an earlier fix a timeout keeps the previous position instead of jumping to the default", async () => {
+  const timers = fakeTimers();
+  let hang = false;
+  const ctx = setup({ geo: () => (hang ? new Promise(() => {}) : Promise.resolve({ lat: 24.15, lon: 120.67 })) });
+  const c = await make(ctx, timers);
+  await c.init();
+  hang = true;
+  const p = c.selectCurrent("gps");
+  assert.equal(c.store.get().locating, true);
+  timers.fireAll();
+  await p;
+  const s = c.store.get();
+  assert.equal(s.location.source, "gps");
+  assert.equal(s.location.lat, 24.15);
+  assert.equal(s.notice, "定位逾時，使用上次位置");
+  assert.equal(s.locating, false);
+});
+
+test("geolocation: a superseded request's timeout is harmless (the latest request wins)", async () => {
+  const timers = fakeTimers();
+  const ctx = setup({ geo: () => new Promise(() => {}) });
+  const c = await make(ctx, timers);
+  c.selectCurrent("gps");
+  c.selectCurrent("gps");
+  timers.fireAll();
+  await new Promise((r) => setImmediate(r));
+  assert.equal(c.store.get().locating, false);
 });

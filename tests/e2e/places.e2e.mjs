@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { startServer } from "./server.mjs";
 import {
-  launch, openApp, settle, shot, overflow, runAxe, SHOTS_M4, ROOT,
-  dayForecast, destForecast, workForecast, airFixture, placesForecasts, LAKE, WORK, DAY_MS, NIGHT_UTC, nightForecast,
+  launch, openApp, settle, shot, waitReady, overflow, runAxe, SHOTS_M4, ROOT,
+  dayForecast, destForecast, workForecast, airFixture, placesForecasts, LAKE, WORK, DAY_MS, NIGHT_UTC, nightForecast, advanceTo,
 } from "./helpers.mjs";
 import { toViewModel } from "../../js/domain/derive.js";
 import { commuteModel } from "../../js/ui/views/commute.js";
@@ -115,6 +115,42 @@ test("picker: opens as a modal dialog from the location key; Esc, ×, backdrop c
   noErrors(app);
 });
 
+test("picker: only a click outside the dialog's rectangle closes it (padding and gaps do not)", async () => {
+  const app = await open({ storage: seed({ saved: [LAKE] }) });
+  const { page } = app;
+  await visit(app);
+  await openPicker(page);
+  const box = await dlg(page).boundingBox();
+  await page.mouse.click(box.x + 6, box.y + box.height / 2); // inside the left padding
+  assert.equal(await isOpen(page), true, "padding click keeps it open");
+  const lead = await page.locator(".pk-lead").boundingBox();
+  await page.mouse.click(box.x + box.width / 2, lead.y + lead.height + 5); // the gap under the lead text
+  assert.equal(await isOpen(page), true, "gap click keeps it open");
+  await page.mouse.click(box.x + box.width / 2, box.y + 5); // top padding
+  assert.equal(await isOpen(page), true, "top padding click keeps it open");
+  await page.mouse.click(box.x - 6, box.y + box.height / 2); // just outside the left edge (the backdrop)
+  assert.equal(await isOpen(page), false, "outside closes it");
+  noErrors(app);
+});
+
+test("search: IME composition (zhuyin) triggers no search and no 找不到; the committed text does", async () => {
+  const app = await open({ geocode });
+  const { page } = app;
+  await app.ctx.addInitScript(() => setInterval(() => performance.now(), 5)); // see the debounce test
+  await visit(app);
+  await openPicker(page);
+  await page.locator("#pk-q").focus();
+  const cdp = await app.ctx.newCDPSession(page);
+  for (const text of ["ㄊ", "ㄊㄞ", "ㄊㄞˊ"]) await cdp.send("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length });
+  await page.waitForTimeout(900); // well past the 400 ms debounce
+  assert.deepEqual(app.geoRequests, [], "no geocoding request while composing");
+  assert.equal(await live(page), "", "no 找不到 announcement for a half-typed syllable");
+  await cdp.send("Input.insertText", { text: "台" }); // the candidate is committed
+  await waitLive(page, /找不到「台」|找到/);
+  assert.equal(app.geoRequests[0], "台", "after the commit the search runs");
+  noErrors(app);
+});
+
 test("picker: Tab and Shift+Tab never leave the dialog; the page behind is inert", async () => {
   const app = await open({ storage: seed({ saved: [LAKE, WORK], workId: WORK.id }) });
   const { page } = app;
@@ -216,13 +252,13 @@ test("search: an English query is sent as typed (no variants); Enter searches at
   await waitLive(page, /^找到 1 個地點$/);
   assert.deepEqual(app.geoRequests, ["Hualien"]);
   assert.match(await dlg(page).locator('[aria-label="搜尋結果"]').innerText(), /Hualien City/);
-  assert.match(await dlg(page).locator('[aria-label="搜尋結果"]').innerText(), /Hualien・Taiwan・海拔 10 m/);
+  assert.match(await dlg(page).locator('[aria-label="搜尋結果"]').innerText(), /Taiwan・海拔 10 m/);
   await page.waitForTimeout(600); // the debounce timer was cancelled by Enter: no second request
   assert.deepEqual(app.geoRequests, ["Hualien"]);
   noErrors(app);
 });
 
-test("search: debounce 400 ms, min 1 character, empty input clears results", async () => {
+test("search: typing yields one debounced request, min 1 character, empty input clears results", async () => {
   const app = await open({ geocode });
   const { page } = app;
   // Playwright's fake clock (page.clock) only processes timers when the page reads the clock; without this
@@ -230,9 +266,9 @@ test("search: debounce 400 ms, min 1 character, empty input clears results", asy
   await app.ctx.addInitScript(() => setInterval(() => performance.now(), 5));
   await visit(app);
   await openPicker(page);
+  // The 400 ms timing itself is covered by tests/unit/picker.test.mjs (injected timers). Here: typing key by key
+  // yields exactly one request, for the final text (an early search would have sent "H", "Hu", ...).
   await page.locator("#pk-q").pressSequentially("Hualien", { delay: 50 });
-  await page.waitForTimeout(150);
-  assert.deepEqual(app.geoRequests, [], "nothing is requested while the user is still typing");
   await waitLive(page, /^找到 1 個地點$/);
   assert.deepEqual(app.geoRequests, ["Hualien"], "one request for the final text");
 
@@ -253,7 +289,7 @@ test("search: no result shows the count text and the hints; the result count is 
   await page.locator("#pk-q").fill("花蓮");
   await waitLive(page, /找不到/);
   assert.deepEqual(app.geoRequests, ["花蓮", "花蓮市"]);
-  assert.equal(await live(page), "找不到「花蓮市」");
+  assert.equal(await live(page), "找不到「花蓮」", "names what was typed, not the last fallback spelling");
   const hint = await page.locator(".pk-hint").innerText();
   assert.match(hint, /試試英文名稱，例如 Taichung/);
   assert.match(hint, /或加上「市」，例如 花蓮市/);
@@ -599,6 +635,74 @@ test("trip: a failing destination shows its own error card with retry; Today and
 });
 
 // ---------------------------------------------------------------- manifest, icons, CSP
+
+const forecastRequests = (app, from = 0) => app.requests.slice(from).filter((u) => u.includes("//api.open-meteo.com"));
+
+test("refresh on return: Today refreshes only the current place (exactly 1 forecast request); the trip view also its destination", async () => {
+  const app = await open({ storage: seed({ saved: [LAKE, WORK], workId: WORK.id, tripId: LAKE.id }), granted: true });
+  const { page } = app;
+  await visit(app);
+  await app.go("#outing/commute"); await ready(page);
+  await page.waitForFunction(() => /BACK・新竹/.test(document.body.textContent) && !/載入中/.test(document.querySelector(".lcd--legs")?.textContent ?? ""));
+  await page.evaluate(() => (location.hash = "#outing/trip"));
+  await page.waitForSelector(".strip");
+  await page.evaluate(() => (location.hash = "#today"));
+  await page.waitForFunction(() => document.querySelector(".hero"));
+  await page.waitForTimeout(300);
+  const before = app.requests.length;
+  await advanceTo(page, DAY_MS + 20 * 60000);
+  await page.waitForTimeout(500);
+  assert.equal(forecastRequests(app, before).length, 1, `only the current place: ${forecastRequests(app, before)}`);
+  assert.match(forecastRequests(app, before)[0], /latitude=24\.15&/);
+  // on the trip view the destination (not the work place) comes along
+  await page.evaluate(() => (location.hash = "#outing/trip"));
+  await page.waitForSelector(".strip");
+  const mid = app.requests.length;
+  await advanceTo(page, DAY_MS + 40 * 60000);
+  await page.waitForTimeout(500);
+  const urls = forecastRequests(app, mid);
+  assert.equal(urls.length, 2, urls.join("\n"));
+  assert.ok(urls.some((u) => /latitude=23\.87&/.test(u)) && !urls.some((u) => /latitude=24\.80&/.test(u)));
+  noErrors(app);
+});
+
+test("trip: a stale cache whose refresh is still in flight shows no 無法更新 banner", async () => {
+  const app = await open({ storage: seed({ saved: [LAKE], tripId: LAKE.id }), granted: true });
+  const { page } = app;
+  await visit(app, "#outing/trip");
+  await page.waitForSelector(".strip");
+  await page.clock.setFixedTime(new Date(DAY_MS + 60 * 60000)); // an hour later: cached forecasts are stale
+  app.mode.forecast = "hang";
+  app.mode.air = "hang";
+  await page.reload();
+  await page.waitForSelector(".strip");
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator('[data-k="t-stale"]').count(), 0, "refresh in flight, not failed: no banner");
+  noErrors(app);
+});
+
+test("location key: stays enabled while locating and opens the picker; no answer within 10 s falls back to the default place", async () => {
+  const app = await open({ storage: seed({ saved: [LAKE] }) });
+  const { page } = app;
+  await app.ctx.addInitScript(() => {
+    navigator.geolocation.getCurrentPosition = () => {}; // never answers (a permission prompt left open)
+  });
+  await app.go("");
+  const btn = page.locator("#loc-btn");
+  await page.waitForFunction(() => document.getElementById("loc-btn").getAttribute("aria-busy") === "true");
+  assert.equal(await btn.isEnabled(), true);
+  assert.match(await btn.innerText(), /^定位中…/);
+  await btn.click();
+  await dlg(page).locator("#pk-q").waitFor();
+  assert.equal(await isOpen(page), true, "the picker opens while locating");
+  await page.getByRole("button", { name: "關閉" }).click();
+  assert.equal(await activeId(page), "loc-btn");
+  // the overall timeout (10 s) ends the wait with the default place
+  await page.waitForFunction(() => document.getElementById("loc-btn").getAttribute("aria-busy") === "false", null, { timeout: 20000 });
+  assert.match(await btn.innerText(), /臺中（預設）/);
+  await waitReady(page);
+  noErrors(app);
+});
 
 test("manifest: valid JSON, linked from the page, icons load (200, PNG, right size); apple-touch-icon; CSP allows both", async () => {
   const app = await open();

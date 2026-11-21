@@ -37,17 +37,19 @@ function setup({ geo = async () => TAICHUNG } = {}) {
   const cache = createCache({ storage, now: () => clock.t });
   const calls = [];
   const fail = new Set(); // "lat,lon" strings that answer 500
+  const hold = new Map(); // "lat,lon" -> promise the response waits for (a request in flight)
   const air = fx("air-taichung.json");
   const fetchImpl = async (url) => {
     calls.push(url);
     const u = new URL(url);
     const id = `${u.searchParams.get("latitude")},${u.searchParams.get("longitude")}`;
+    if (hold.has(id)) await hold.get(id);
     if (fail.has(id)) return new Response(JSON.stringify({ error: true, reason: "boom" }), { status: 500 });
     if (u.hostname.startsWith("air-quality")) return new Response(JSON.stringify(air), { status: 200 });
     const base = u.searchParams.get("latitude") === "23.87" ? multi[1] : multi[0];
     return new Response(JSON.stringify(forecastWith(base, TEMPS[id] ?? 19)), { status: 200 });
   };
-  return { storage, clock, cache, calls, fail, fetchImpl, geo };
+  return { storage, clock, cache, calls, fail, hold, fetchImpl, geo };
 }
 
 /** Controller; `spy` receives `{ kind, locs, deps }` of every API call. */
@@ -299,6 +301,114 @@ test("tick rebuilds extra places when the minute changes; refreshIfStale reloads
   assert.notEqual(c.store.get().places[k].vm.now.minuteKey, m0);
   const before = forecastCalls(ctx).length;
   ctx.clock.t = NOW + 20 * 60e3;
+  await c.refreshIfStale({ wanted: [k] });
+  assert.equal(forecastCalls(ctx).length, before + 2, "current and the wanted work place both reloaded");
+});
+
+// ---- review findings -------------------------------------------------------------------------
+const settle = () => new Promise((r) => setTimeout(r, 15));
+const gate = () => { let open; const p = new Promise((r) => (open = r)); return { p, open }; };
+
+test("extra place: a stale cache entry with a refresh in flight is NOT flagged 無法更新 (only a failure or an already-stale entry is)", async () => {
+  const ctx = setup();
+  const c1 = make(ctx);
+  await c1.init();
+  await c1.ensurePlace(LAKE);
+  // a new session an hour later: cache is stale, the refresh hangs
+  __resetInflight();
+  ctx.clock.t = NOW + 60 * 60e3;
+  const g = gate();
+  ctx.hold.set("23.87,120.91", g.p);
+  const c2 = make(ctx);
+  await c2.init();
+  await c2.ensurePlace(LAKE);
+  const k = placeKey(LAKE);
+  assert.equal(c2.store.get().places[k].status, "ready", "no stale banner while the refresh is in flight");
+  g.open();
+  await settle();
+  assert.equal(c2.store.get().places[k].status, "ready");
+});
+
+test("extra place: once stale (failed refresh) it stays stale while the next refresh is in flight, until it lands", async () => {
+  const ctx = setup();
+  const c = make(ctx);
+  await c.init();
+  await c.ensurePlace(LAKE);
+  const k = placeKey(LAKE);
+  ctx.clock.t = NOW + 20 * 60e3;
+  ctx.fail.add("23.87,120.91");
+  await c.ensurePlace(LAKE);
+  await settle();
+  assert.equal(c.store.get().places[k].status, "stale");
+  ctx.fail.clear();
+  const g = gate();
+  ctx.hold.set("23.87,120.91", g.p);
+  await c.ensurePlace(LAKE);
+  assert.equal(c.store.get().places[k].status, "stale", "same rule as the current place: no flicker to ready");
+  g.open();
+  await settle();
+  assert.equal(c.store.get().places[k].status, "ready");
+});
+
+test("refreshIfStale refreshes the current place plus only the extras the visible view wants", async () => {
+  const ctx = setup();
+  const c = make(ctx);
+  await c.init();
+  await c.ensurePlace(WORK);
+  await c.ensurePlace(LAKE);
+  const all = [placeKey(WORK), placeKey(LAKE)];
+  ctx.clock.t = NOW + 20 * 60e3;
+  let before = forecastCalls(ctx).length;
+  await c.refreshIfStale({ wanted: [], active: all }); // Today: nothing extra
+  await settle(); // stale-while-revalidate: the network refresh runs in the background
+  assert.equal(forecastCalls(ctx).length - before, 1, "exactly one forecast request (the current place)");
+  ctx.clock.t = NOW + 40 * 60e3;
+  before = forecastCalls(ctx).length;
+  await c.refreshIfStale({ wanted: [placeKey(LAKE)], active: all }); // trip view
+  await settle();
+  const urls = forecastCalls(ctx).slice(before);
+  assert.equal(urls.length, 2);
+  assert.ok(urls.some((u) => u.includes("latitude=23.87")) && urls.some((u) => u.includes("latitude=24.15")));
+  assert.ok(!urls.some((u) => u.includes("latitude=24.16")), "the work place is not wanted");
+});
+
+test("refreshIfStale drops the records of work/trip places that are no longer set", async () => {
+  const ctx = setup();
+  const c = make(ctx);
+  await c.init();
+  await c.ensurePlace(WORK);
+  await c.ensurePlace(LAKE);
+  await c.refreshIfStale({ wanted: [], active: [placeKey(LAKE)] }); // the work place was cleared
+  assert.deepEqual(Object.keys(c.store.get().places), [placeKey(LAKE)]);
+  // without `active` nothing is dropped (back-compat) and no arguments still works
   await c.refreshIfStale();
-  assert.equal(forecastCalls(ctx).length, before + 2, "current and work place both reloaded");
+  assert.deepEqual(Object.keys(c.store.get().places), [placeKey(LAKE)]);
+});
+
+test("MAX_EXTRA_PLACES holds even when the oldest record is still in flight: its result is ignored", async () => {
+  const ctx = setup();
+  const c = make(ctx);
+  await c.init();
+  const g = gate();
+  ctx.hold.set("24.16,120.64", g.p); // WORK stays in flight
+  const pw = c.ensurePlace(WORK);
+  await c.ensurePlace(LAKE);
+  await c.ensurePlace(HOME); // third extra: the oldest (in-flight WORK) must go
+  assert.ok(Object.keys(c.store.get().places).length <= MAX_EXTRA_PLACES, Object.keys(c.store.get().places).join());
+  assert.ok(!(placeKey(WORK) in c.store.get().places));
+  g.open();
+  await pw;
+  await settle();
+  assert.ok(Object.keys(c.store.get().places).length <= MAX_EXTRA_PLACES, "a late result does not resurrect it");
+  assert.ok(!(placeKey(WORK) in c.store.get().places));
+});
+
+test("MAX_EXTRA_PLACES holds even when `keep` lists more keys than fit", async () => {
+  const ctx = setup();
+  const c = make(ctx);
+  await c.init();
+  const keep = [WORK, LAKE, HOME].map(placeKey);
+  for (const p of [WORK, LAKE, HOME]) await c.ensurePlace(p, { keep });
+  assert.equal(Object.keys(c.store.get().places).length, MAX_EXTRA_PLACES);
+  assert.ok(placeKey(HOME) in c.store.get().places, "the newest survives");
 });
