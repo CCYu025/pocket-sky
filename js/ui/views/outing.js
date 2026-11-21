@@ -10,29 +10,35 @@ import { scenarioHref } from "../route.js";
 import { ERROR_TEXT } from "./today.js";
 import { commuteHtml } from "./commute.js";
 import { exerciseHtml } from "./exercise.js";
+import { tripHtml } from "./trip.js";
 
 /**
- * Scenario chips: 通勤 / 運動 are links (`aria-current` on the active one); 出遊 is a
- * non-interactive, disabled element with a `v2` badge.
- * @param {'commute'|'exercise'} scenario Active scenario.
+ * Scenario chips: 通勤 / 運動 / 出遊 are links (`aria-current` on the active one).
+ * @param {'commute'|'exercise'|'trip'} scenario Active scenario.
  * @returns {string} HTML.
  */
 export function chipsHtml(scenario) {
   const link = (id, label) =>
     `<a class="key chip chip--${id}" href="${scenarioHref(id)}"${scenario === id ? ' aria-current="page"' : ""}>${label}</a>`;
-  return `<div class="chips" data-k="chips" role="group" aria-label="情境">${link("commute", "通勤")}${link("exercise", "運動")}<span class="key chip chip--trip" role="link" aria-disabled="true">出遊 <span class="badge">v2</span></span></div>`;
+  return `<div class="chips" data-k="chips" role="group" aria-label="情境">${link("commute", "通勤")}${link("exercise", "運動")}${link("trip", "出遊")}</div>`;
 }
 
 /**
  * Full Outing HTML for a controller state.
  * @param {object} state Controller state (see js/app/controller.js).
- * @param {{outing: {scenario: string, commute: {out: number, back: number}}, nowMs: number, picked: (string|null), flip: number, exercise?: object}} ui
- *   `ui.outing.scenario` is the *resolved* scenario of the route.
+ * @param {{outing: {scenario: string, commute: {out: number, back: number}, trip: {start: number, end: number}}, nowMs: number, picked: (string|null), flip: number, exercise?: object, work?: (object|null), trip?: (object|null), saved?: object[]}} ui
+ *   `ui.outing.scenario` is the *resolved* scenario of the route; `ui.work` / `ui.trip` are the work place and the trip destination
+ *   (Places or null), `ui.saved` the saved places.
  * @returns {string} HTML.
  */
 export function outingHtml(state, ui) {
   const { status, vm } = state;
   const parts = [chipsHtml(ui.outing.scenario)];
+  if (ui.outing.scenario === "trip") {
+    // the trip view has its own states (destination loading / error / stale); the current place only provides the origin
+    parts.push(tripHtml(state, ui));
+    return parts.join("\n");
+  }
   if (status === "stale" && vm) {
     parts.push(`<p class="banner" data-k="stale">資料時間 ${esc(clockAt(state.fetchedAt ?? 0, vm.location.utcOffsetSeconds))}・無法更新</p>`);
   }
@@ -61,13 +67,13 @@ export function applyOutingStyles(root) {
  * Controls whose value is a DOM *property* that diverges from its attribute once the user
  * has touched it: push the model value back after each reconcile.
  * @param {ParentNode} root
- * @param {{commute: {out: number, back: number}}} outing
+ * @param {{commute: {out: number, back: number}, trip: {start: number, end: number}}} outing
  * @returns {void}
  */
 export function syncControls(root, outing) {
-  for (const key of ["out", "back"]) {
+  for (const [key, group] of [["out", "commute"], ["back", "commute"], ["start", "trip"], ["end", "trip"]]) {
     const sel = root.querySelector(`#sel-${key}`);
-    if (sel && sel.value !== String(outing.commute[key])) sel.value = String(outing.commute[key]);
+    if (sel && sel.value !== String(outing[group][key])) sel.value = String(outing[group][key]);
   }
   const range = root.querySelector("#x-range");
   if (range) {

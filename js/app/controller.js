@@ -39,6 +39,12 @@ export const DEFAULT_NOTICE = "使用預設地點：臺中";
  * @property {number|null} fetchedAt
  */
 
+/**
+ * `vm.hours` length for extra places (work, trip): 36 instead of the 24 of the current place, so a trip window
+ * that starts tomorrow morning (the default 09:00-16:00 seen in the afternoon) is complete.
+ */
+export const EXTRA_HOURS = 36;
+
 /** Most extra places (work + trip) kept in memory; with the current place that is at most 3 live. */
 export const MAX_EXTRA_PLACES = 2;
 
@@ -220,7 +226,7 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
     const savedAt = cache?.get(key)?.savedAt;
     setEntry(key, {
       status,
-      vm: toViewModel({ forecast: rec.raw.forecast, air: rec.raw.air, nowMs: now() }),
+      vm: toViewModel({ forecast: rec.raw.forecast, air: rec.raw.air, nowMs: now(), hoursAhead: EXTRA_HOURS }),
       error: null,
       fetchedAt: typeof savedAt === "number" ? savedAt : now(),
     });
@@ -418,7 +424,7 @@ export function createController({ api, cache, storage, now, geolocate, fetchImp
       for (const [key, rec] of extra) {
         const e = st.places[key];
         if (rec.raw.forecast && e?.vm && (e.status === "ready" || e.status === "stale")) {
-          const vm = toViewModel({ forecast: rec.raw.forecast, air: rec.raw.air, nowMs: now() });
+          const vm = toViewModel({ forecast: rec.raw.forecast, air: rec.raw.air, nowMs: now(), hoursAhead: EXTRA_HOURS });
           if (vm.now.minuteKey !== e.vm.now.minuteKey) setEntry(key, { ...e, vm });
         }
       }

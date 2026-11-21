@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { toViewModel } from "../../js/domain/derive.js";
-import { commuteModel, commuteHtml, LOCATION_NOTE } from "../../js/ui/views/commute.js";
+import { commuteModel, commuteHtml, workNote } from "../../js/ui/views/commute.js";
 import { exerciseModel, exerciseHtml, resolveSelection, stepIndex, slotLabel, levelWord } from "../../js/ui/views/exercise.js";
 import { chipsHtml, outingHtml, revealScrollLeft } from "../../js/ui/views/outing.js";
 
@@ -141,8 +141,8 @@ test("m3: legs are shown chronologically (today's BACK before tomorrow's OUT) wi
   assert.deepEqual(m.ordered.map((l) => l.key), ["back", "out"]);
   const html = commuteHtml(ready(vmOfHours(hours)), ui());
   assert.ok(html.indexOf('data-k="leg-back"') < html.indexOf('data-k="leg-out"'), "BACK first in the DOM");
-  assert.match(html, /<span>BACK<\/span>/);
-  assert.match(html, /<span>OUT 明日<\/span>/);
+  assert.match(html, /<span class="leg-name">BACK<\/span>/);
+  assert.match(html, /<span class="leg-name">OUT 明日<\/span>/);
   // both today: OUT then BACK; both tomorrow: OUT then BACK
   const today = commuteModel(vmOfHours(synth("2026-11-21", 6, 24)), { out: 8, back: 18 });
   assert.deepEqual(today.ordered.map((l) => l.key), ["out", "back"]);
@@ -205,7 +205,7 @@ test("commuteModel: missing hours render as no data, never throw", () => {
 
 test("commuteHtml: structure, labels, note, no inline styles", () => {
   const html = commuteHtml(ready(vmAt(NOW, rainy)), ui());
-  assert.ok(html.includes(LOCATION_NOTE));
+  assert.ok(html.includes(workNote(null)));
   assert.match(html, /<label class="field-k" for="sel-out">出門時間<\/label>/);
   assert.match(html, /<label class="field-k" for="sel-back">回家時間<\/label>/);
   assert.equal((html.match(/<option /g) || []).length, 48);
@@ -349,13 +349,92 @@ test("exerciseHtml: tomorrow markers; loading, empty and error skeletons", () =>
 
 // ---- chips / shell
 
-test("chipsHtml: links with aria-current; 出遊 is a disabled non-link with v2", () => {
+test("chipsHtml: three links, one aria-current; 出遊 is an enabled link to #outing/trip", () => {
   const c = chipsHtml("exercise");
   assert.match(c, /<a class="key chip chip--commute" href="#outing\/commute">通勤<\/a>/);
   assert.match(c, /<a class="key chip chip--exercise" href="#outing\/exercise" aria-current="page">運動<\/a>/);
-  assert.match(c, /<span class="key chip chip--trip" role="link" aria-disabled="true">出遊 <span class="badge">v2<\/span><\/span>/);
+  assert.match(c, /<a class="key chip chip--trip" href="#outing\/trip">出遊<\/a>/);
   assert.equal((c.match(/aria-current/g) || []).length, 1);
-  assert.doesNotMatch(c, /chip--trip" href/);
+  assert.doesNotMatch(c, /v2|aria-disabled/);
+  assert.match(chipsHtml("trip"), /chip--trip" href="#outing\/trip" aria-current="page"/);
+});
+
+// ---- commute with a work place (M4)
+
+const WORK_PLACE = { id: "p:24.80,120.97", name: "新竹", admin1: "新竹縣", lat: 24.8, lon: 120.97 };
+const workEntry = (vm, status = "ready") => ({ status, vm, error: null, fetchedAt: NOW });
+const workRainy = (f) => {
+  for (const i of [42, 43]) {
+    f.hourly.precipitation_probability[i] = 60;
+    f.hourly.temperature_2m[i] = 27;
+    f.hourly.apparent_temperature[i] = 29;
+  }
+};
+
+test("commuteModel with a work place: BACK comes from the work place's hours, OUT from the current one", () => {
+  const current = vmAt(NOW); // dry
+  const work = vmAt(NOW, workRainy);
+  const m = commuteModel(current, COMMUTE, { place: WORK_PLACE, entry: workEntry(work) });
+  assert.equal(m.workState, "ready");
+  const [out, back] = m.legs;
+  assert.equal(out.label, "OUT");
+  assert.equal(back.label, "BACK・新竹");
+  assert.equal(back.warn, true);
+  assert.equal(out.warn, false);
+  assert.equal(back.hours[0].hourKey, work.hours.find((h) => h.hour === 18).hourKey);
+  assert.equal(back.entry.temp, 27, "the BACK temperature is the work place's");
+  assert.match(back.aria, /^回家 18:00，公司 新竹$/);
+  const by = Object.fromEntries(m.items.map((i) => [i.id, i]));
+  assert.deepEqual(by.umbrella.tags, ["回家 18:00・降雨 60%"], "the umbrella is triggered by the BACK leg only");
+  assert.equal(m.headline, "傍晚回家會遇到雨");
+  // the same current place without a work place: dry, both legs current
+  const plain = commuteModel(current, COMMUTE);
+  assert.equal(plain.legs[1].label, "BACK");
+  assert.equal(plain.items.find((i) => i.id === "umbrella").on, false);
+});
+
+test("commuteModel: each leg is evaluated on its own place's hours (a leg's hours are not mixed)", () => {
+  const current = vmAt(NOW, rainy); // rain 18-19 here
+  const work = vmAt(NOW); // dry at work
+  const m = commuteModel(current, { out: 18, back: 18 }, { place: WORK_PLACE, entry: workEntry(work) });
+  assert.equal(m.legs[0].warn, true, "OUT at the current place is wet");
+  assert.equal(m.legs[1].warn, false, "BACK at the work place is dry");
+  assert.deepEqual(m.items.find((i) => i.id === "umbrella").tags, ["出門 18:00・降雨 60%"]);
+  assert.equal(m.headline, "傍晚出門可能下雨", "the headline follows the per-leg items");
+});
+
+test("commuteModel: a work place that is loading or failed leaves OUT intact", () => {
+  for (const [entry, state, detail, headline] of [
+    [null, "loading", "載入中", "公司天氣載入中…"],
+    [workEntry(null, "loading"), "loading", "載入中", "公司天氣載入中…"],
+    [workEntry(null, "error"), "error", "無法取得資料", "公司天氣暫時無法取得"],
+  ]) {
+    const m = commuteModel(vmAt(NOW), COMMUTE, { place: WORK_PLACE, entry });
+    assert.equal(m.workState, state);
+    assert.equal(m.legs[1].detail, detail);
+    assert.equal(m.legs[1].wx, "--");
+    assert.equal(m.headline, headline);
+    assert.ok(m.legs[0].entry, "OUT still shows the current place");
+    assert.equal(m.legs[1].label, "BACK・新竹");
+  }
+});
+
+test("commuteHtml: 設定公司地點 opens the picker in work mode; the note names the work place; errors offer a retry", () => {
+  const state = { status: "ready", vm: vmAt(NOW), alert: null, fetchedAt: NOW, places: {} };
+  const none = commuteHtml(state, ui());
+  assert.match(none, /data-action="open-picker" data-mode="work">設定公司地點<\/button>/);
+  assert.ok(none.includes(workNote(null)));
+  assert.doesNotMatch(none, /M4 可設定/);
+  const key = "om:v1:forecast:24.80,120.97";
+  const withWork = commuteHtml({ ...state, places: { [key]: workEntry(vmAt(NOW, workRainy)) } }, ui({ work: WORK_PLACE }));
+  assert.ok(withWork.includes("回家（BACK）使用公司地點：新竹"));
+  assert.match(withWork, /<span class="leg-name">BACK・新竹<\/span>/);
+  assert.match(withWork, /data-mode="work">設定公司地點/);
+  const failed = commuteHtml({ ...state, places: { [key]: workEntry(null, "error") } }, ui({ work: WORK_PLACE }));
+  assert.match(failed, /公司天氣暫時無法取得/);
+  assert.match(failed, /data-action="retry-place" data-id="p:24\.80,120\.97">重試/);
+  const hostile = commuteHtml(state, ui({ work: { ...WORK_PLACE, name: '<img src=x onerror="a">' } }));
+  assert.doesNotMatch(hostile, /<img/);
 });
 
 test("outingHtml: stale banner, error card, no-hours notice", () => {
