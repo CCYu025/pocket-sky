@@ -4,7 +4,7 @@
  * @module domain/derive
  */
 
-import { localParts, addHours, indexOfHour } from '../time.js';
+import { localParts, addHours, indexOfHour, minutesUntil } from '../time.js';
 import { describeWeather } from './weathercode.js';
 
 /**
@@ -71,8 +71,12 @@ export function computeYesterdayDelta(hourly, hourKey) {
   const now = at(hourly, 'temperature_2m', indexIn(hourly, hourKey));
   const prev = at(hourly, 'temperature_2m', indexIn(hourly, addHours(hourKey, -24)));
   if (now === null || prev === null) return null;
-  return Math.round((now - prev) * 10) / 10;
+  // `|| 0` turns -0 (small negative deltas rounding to zero) into 0.
+  return Math.round((now - prev) * 10) / 10 || 0;
 }
+
+/** Observations older (or further in the future) than this many minutes are not "current". */
+const STALE_CURRENT_MINUTES = 90;
 
 /**
  * Convert one forecast location (plus optional air quality) into a view model.
@@ -85,6 +89,7 @@ export function computeYesterdayDelta(hourly, hourKey) {
  * @returns {{
  *   location: {lat: number|null, lon: number|null, elevation: number|null, utcOffsetSeconds: number},
  *   now: Object, today: Object, yesterdayDelta: number|null,
+ *   stale: {current: boolean, ageMinutes: number|null}, hoursAvailable: boolean,
  *   hours: Object[], minutely15: Object[], air: {aqi: number|null, pm25: number|null}|null
  * }} View model; see docs/ARCHITECTURE.md.
  */
@@ -96,22 +101,48 @@ export function toViewModel({ forecast, air = null, nowMs }) {
   const cur = f.current || {};
   const hourly = f.hourly || null;
 
-  const code = num(cur.weather_code);
-  const isDay = num(cur.is_day);
-  const label = code === null ? null : describeWeather(code, isDay === 1).label;
+  // Staleness: `current` is trusted only if observed within 90 minutes of "now".
+  const observedAt = str(cur.time);
+  let ageMinutes = observedAt === null ? null : minutesUntil(observedAt, minuteKey);
+  if (!Number.isFinite(ageMinutes)) ageMinutes = null;
+  const staleCurrent = ageMinutes === null || Math.abs(ageMinutes) > STALE_CURRENT_MINUTES;
 
-  const now = {
-    hourKey,
-    minuteKey,
-    temp: num(cur.temperature_2m),
-    feels: num(cur.apparent_temperature),
-    humidity: num(cur.relative_humidity_2m),
-    code,
-    label,
-    wind: num(cur.wind_speed_10m),
-    windDir: num(cur.wind_direction_10m),
-    isDay,
-  };
+  let now;
+  if (staleCurrent) {
+    // Fall back to the hourly entry at hourKey (null when absent). Hourly has no
+    // wind direction or is_day, so those are null rather than a stale observation.
+    const hi = indexIn(hourly, hourKey);
+    const code = at(hourly, 'weather_code', hi);
+    now = {
+      hourKey,
+      minuteKey,
+      observedAt,
+      temp: at(hourly, 'temperature_2m', hi),
+      feels: at(hourly, 'apparent_temperature', hi),
+      humidity: at(hourly, 'relative_humidity_2m', hi),
+      code,
+      label: code === null ? null : describeWeather(code, true).label,
+      wind: at(hourly, 'wind_speed_10m', hi),
+      windDir: null,
+      isDay: null,
+    };
+  } else {
+    const code = num(cur.weather_code);
+    const isDay = num(cur.is_day);
+    now = {
+      hourKey,
+      minuteKey,
+      observedAt,
+      temp: num(cur.temperature_2m),
+      feels: num(cur.apparent_temperature),
+      humidity: num(cur.relative_humidity_2m),
+      code,
+      label: code === null ? null : describeWeather(code, isDay === 1).label,
+      wind: num(cur.wind_speed_10m),
+      windDir: num(cur.wind_direction_10m),
+      isDay,
+    };
+  }
 
   // daily.time is date-only, so compare against the local date.
   const daily = f.daily || null;
@@ -178,6 +209,8 @@ export function toViewModel({ forecast, air = null, nowMs }) {
     now,
     today,
     yesterdayDelta: computeYesterdayDelta(hourly, hourKey),
+    stale: { current: staleCurrent, ageMinutes },
+    hoursAvailable: hours.length > 0,
     hours,
     minutely15,
     air: airCur ? { aqi: num(airCur.us_aqi), pm25: num(airCur.pm2_5) } : null,
