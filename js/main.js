@@ -326,6 +326,9 @@ doc.addEventListener("visibilitychange", () => {
     controller.refreshIfStale(viewPlaces);
   }
 });
+// Offline-first: no requests while offline (the controller reads the cache only); refresh once when the network is back.
+window.addEventListener("online", () => controller.goOnline(viewPlaces));
+window.addEventListener("offline", () => controller.goOffline());
 setInterval(() => {
   if (!doc.hidden) controller.tick();
 }, 20000);

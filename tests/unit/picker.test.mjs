@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createPicker, SEARCH_DEBOUNCE_MS } from "../../js/app/picker.js";
+import { liveText } from "../../js/ui/views/places.js";
 import { readPlaces, writePlaces, emptyPlaces, addPlace, setWork, setTrip, MAX_PLACES } from "../../js/app/places-state.js";
 
 function memStorage() {
@@ -44,7 +45,7 @@ function fakeTimers() {
 
 const R = (name, lat, lon, admin1 = null) => ({ name, latitude: lat, longitude: lon, lat, lon, admin1, country: "臺灣", elevation: 10, timezone: "Asia/Taipei" });
 
-function setup({ search, current = "gps" } = {}) {
+function setup({ search, current = "gps", onLine } = {}) {
   const { dlg, input } = fakeDialog();
   const storage = memStorage();
   const timers = fakeTimers();
@@ -55,7 +56,7 @@ function setup({ search, current = "gps" } = {}) {
   const searchFn = search ?? (async (q) => { calls.push(q); return []; });
   const picker = createPicker({
     dialog: dlg, storage, controller, search: searchFn, onChange: () => changes.push(1),
-    renderView: () => {}, setTimer: timers.setTimer, clearTimer: timers.clearTimer,
+    renderView: () => {}, setTimer: timers.setTimer, clearTimer: timers.clearTimer, ...(onLine ? { onLine } : {}),
   });
   const type = (value, extra = {}) => { input.value = value; dlg.fire("input", { target: input, ...extra }); };
   return { dlg, input, storage, timers, calls, selected, changes, picker, type, setCurrent: (c) => (current = c) };
@@ -271,4 +272,24 @@ test("使用 (pk-use) selects the place and closes", () => {
   clickEl(s, "pk-use", { id: "p:24.80,120.97" });
   assert.deepEqual(s.selected, ["p:24.80,120.97"]);
   assert.equal(s.dlg.open, false);
+});
+
+test("offline: a search makes no request and says 離線中，無法搜尋 (debounce and Enter)", async () => {
+  const net = { online: false };
+  const s = setup({ onLine: () => net.online });
+  s.picker.open();
+  s.type("Hualien");
+  await s.timers.fire(); await tick();
+  assert.deepEqual(s.calls, []);
+  assert.equal(s.picker.getState().status, "offline");
+  assert.equal(liveText(s.picker.getState()), "離線中，無法搜尋");
+  s.dlg.fire("keydown", { key: "Enter", target: s.input, preventDefault() {} });
+  await tick();
+  assert.deepEqual(s.calls, []);
+  // back online: the same field searches again
+  net.online = true;
+  s.dlg.fire("keydown", { key: "Enter", target: s.input, preventDefault() {} });
+  await tick();
+  assert.deepEqual(s.calls, ["Hualien"]);
+  assert.notEqual(s.picker.getState().status, "offline");
 });

@@ -257,7 +257,7 @@ async function swr({ key, ttlMs, load, deps }) {
   const maxStaleMs = deps.maxStaleMs ?? DEFAULT_MAX_STALE_MS;
   const now = deps.now ?? Date.now;
   const hit = cache.get(key);
-  if (hit && !hit.fresh && now() - hit.savedAt > maxStaleMs) {
+  if (hit && !hit.fresh && !deps.preferCached && now() - hit.savedAt > maxStaleMs) {
     // Too old to show as-is: await the network, degrade to the old value if offline.
     try {
       return (await sharedLoad(key, ttlMs, load, cache, now)).value;
@@ -292,6 +292,7 @@ async function swr({ key, ttlMs, load, deps }) {
  * @property {{ get(key:string): ({value:any, savedAt:number, fresh:boolean}|null), set(key:string, value:any, ttlMs:number): void }} [cache] Optional cache.
  * @property {() => number} [now] Clock used for the `maxStaleMs` check (default `Date.now`); the cache owns freshness.
  * @property {number} [maxStaleMs] Stale entries (not fresh) older than this (default 24 h) are treated as a miss: the network is awaited; if it fails the old value is returned and `onError(err)` is called; with no cached value the error is thrown.
+ * @property {boolean} [preferCached] Offline-first display: any cached entry, however old, is returned immediately and refreshed in the background (like a stale entry younger than `maxStaleMs`; `onUpdate` / `onError` report the refresh). Default false keeps the `maxStaleMs` contract (an over-age entry waits for the network).
  * @property {number} [ttlMs] Override TTL for this call.
  * @property {number} [timeoutMs] Request timeout.
  * @property {(fresh:any, meta:{key:string}) => void} [onUpdate] Called with refreshed data after a stale cache hit (only if no newer write for the key landed meanwhile).

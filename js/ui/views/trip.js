@@ -9,8 +9,8 @@ import { T } from "../../rules/config.js";
 import { levelWord } from "./exercise.js";
 import { checklistHtml, valueText } from "./commute.js";
 import { entryOf } from "./places.js";
-import { clockAt, intText } from "../format.js";
-import { ERROR_TEXT } from "./today.js";
+import { dataBannerText, intText } from "../format.js";
+import { errorText } from "./today.js";
 import { placeLabel } from "../../app/places-state.js";
 
 const pad2 = (h) => String(h).padStart(2, "0");
@@ -170,11 +170,11 @@ export function tripHtml(state, ui) {
   const vm = entry?.vm ?? null;
   const ready = Boolean(vm) && (entry.status === "ready" || entry.status === "stale");
   const model = ready ? tripModel({ vm, place, originVm: state.vm ?? null }, t, ui.nowMs) : null;
-  if (entry?.status === "stale" && vm) {
-    parts.push(`<p class="banner" data-k="t-stale">資料時間 ${esc(clockAt(entry.fetchedAt ?? 0, vm.location.utcOffsetSeconds))}・無法更新</p>`);
+  if ((entry?.status === "stale" || (state.offline && ready)) && vm) {
+    parts.push(`<p class="banner" data-k="t-stale">${esc(dataBannerText({ fetchedAt: entry.fetchedAt, vm, refreshing: entry.refreshing, offline: state.offline }))}</p>`);
   }
   if (entry?.status === "error" && !vm) {
-    parts.push(`<div class="error-card" data-k="t-error"><p>${esc(ERROR_TEXT)}</p><button type="button" class="key" id="t-retry" data-action="retry-place" data-id="${esc(place.id)}">重試</button></div>`);
+    parts.push(`<div class="error-card" data-k="t-error"><p>${esc(errorText(entry.error))}</p>${entry.error?.offline ? "" : `<button type="button" class="key" id="t-retry" data-action="retry-place" data-id="${esc(place.id)}">重試</button>`}</div>`);
   }
   if (ready && !vm.hoursAvailable) parts.push(`<p class="banner" data-k="t-no-hours">沒有逐時資料，無法規劃出遊</p>`);
   let title = "載入天氣中…";
