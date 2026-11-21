@@ -26,7 +26,17 @@ export const TTL = Object.freeze({
  * @returns {string} `om:v1:{api}:{lat},{lon}`
  */
 export function cacheKey(api, lat, lon) {
-  return `${PREFIX}${api}:${lat.toFixed(2)},${lon.toFixed(2)}`;
+  return `${PREFIX}${api}:${fmt(lat)},${fmt(lon)}`;
+}
+
+/**
+ * Round to 2 dp; `-0.00` is normalised to `0.00`.
+ * @param {number} n
+ * @returns {string}
+ */
+function fmt(n) {
+  const s = n.toFixed(2);
+  return s === "-0.00" ? "0.00" : s;
 }
 
 /**
@@ -91,14 +101,17 @@ export function createCache({ storage, now = () => Date.now(), maxLocationsPerAp
       try {
         const e = parseEntry(storage.getItem(key));
         if (!e) return null;
-        return { value: e.value, savedAt: e.savedAt, fresh: now() - e.savedAt <= e.ttlMs };
+        const age = now() - e.savedAt; // negative: savedAt is in the future (clock moved back) -> not fresh
+        return { value: e.value, savedAt: e.savedAt, fresh: age >= 0 && age <= e.ttlMs };
       } catch {
         return null;
       }
     },
     /**
      * Write an entry and evict the oldest in the same api namespace so at most
-     * `maxLocationsPerApi` remain. Never throws.
+     * `maxLocationsPerApi` remain. If `setItem` fails (e.g. quota), the oldest
+     * other entry in the namespace is evicted and the write retried, at most
+     * `maxLocationsPerApi` times. Never throws.
      * @param {string} key
      * @param {*} value JSON-serialisable value.
      * @param {number} ttlMs Time-to-live in ms.
@@ -106,25 +119,44 @@ export function createCache({ storage, now = () => Date.now(), maxLocationsPerAp
      */
     set(key, value, ttlMs) {
       if (!storage) return;
+      let payload;
       try {
-        storage.setItem(key, JSON.stringify({ value, savedAt: now(), ttlMs }));
+        payload = JSON.stringify({ value, savedAt: now(), ttlMs });
       } catch {
         return;
       }
+      const ns = namespaceOf(key);
+      /** @returns {Array<{k: string, savedAt: number}>} Namespace entries, oldest first (corrupt first). */
+      const byAge = () =>
+        keysIn(ns)
+          .map((k) => {
+            const e = parseEntry(storage.getItem(k));
+            return { k, savedAt: e ? e.savedAt : -Infinity };
+          })
+          .sort((a, b) => {
+            if (a.savedAt !== b.savedAt) return a.savedAt < b.savedAt ? -1 : 1;
+            return (a.k === key) - (b.k === key);
+          });
+      let written = false;
+      for (let attempt = 0; attempt <= maxLocationsPerApi && !written; attempt++) {
+        try {
+          storage.setItem(key, payload);
+          written = true;
+        } catch {
+          if (attempt === maxLocationsPerApi || !ns) return;
+          try {
+            const victim = byAge().find((e) => e.k !== key);
+            if (!victim) return;
+            storage.removeItem(victim.k);
+          } catch {
+            return;
+          }
+        }
+      }
       try {
-        const ns = namespaceOf(key);
-        if (!ns) return;
-        const entries = keysIn(ns).map((k) => {
-          const e = parseEntry(storage.getItem(k));
-          return { k, savedAt: e ? e.savedAt : -Infinity };
-        });
+        const entries = byAge();
         if (entries.length <= maxLocationsPerApi) return;
-        // Oldest first (corrupt entries first of all); the just-written key
-        // loses ties so it is never the one evicted.
-        entries.sort((a, b) => {
-          if (a.savedAt !== b.savedAt) return a.savedAt < b.savedAt ? -1 : 1;
-          return (a.k === key) - (b.k === key);
-        });
+        // The just-written key loses ties so it is never the one evicted.
         for (const { k } of entries.slice(0, entries.length - maxLocationsPerApi)) {
           storage.removeItem(k);
         }

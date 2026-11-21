@@ -5,11 +5,15 @@
 /**
  * Create a store holding a plain object.
  * @param {object} [initial={}] Initial state (shallow-copied).
+ * @param {object} [options]
+ * @param {(error: *) => void} [options.onError] Called with anything a subscriber throws.
+ *   Default rethrows asynchronously (`queueMicrotask(() => { throw e; })`) so the
+ *   failure surfaces globally without breaking `set` or other subscribers.
  * @returns {{get: () => object, set: (partial: object) => void, subscribe: (fn: (state: object) => void) => () => void}}
- *   `set` shallow-merges and synchronously notifies subscribers;
+ *   `set` shallow-merges and synchronously notifies subscribers (a throwing subscriber is isolated, see `onError`);
  *   `subscribe` returns an unsubscribe function.
  */
-export function createStore(initial = {}) {
+export function createStore(initial = {}, { onError = (e) => queueMicrotask(() => { throw e; }) } = {}) {
   let state = { ...initial };
   const listeners = new Set();
 
@@ -30,7 +34,12 @@ export function createStore(initial = {}) {
       state = { ...state, ...partial };
       for (const entry of [...listeners]) {
         // A subscriber removed earlier in this pass is skipped.
-        if (listeners.has(entry)) entry.fn(state);
+        if (!listeners.has(entry)) continue;
+        try {
+          entry.fn(state);
+        } catch (e) {
+          onError(e);
+        }
       }
     },
     /**

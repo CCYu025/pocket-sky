@@ -239,18 +239,82 @@ test("storage that throws on getItem/setItem/removeItem never throws out", () =>
   assert.doesNotThrow(() => c.remove(key));
 });
 
-test("quota error on setItem leaves existing entries intact", () => {
+test("quota error on setItem evicts the oldest entry in the namespace and retries", () => {
+  const storage = new FakeStorage();
+  const now = clock(1000);
+  const c = createCache({ storage, now });
+  const a = cacheKey("forecast", 1, 1);
+  const b = cacheKey("forecast", 2, 2);
+  const other = cacheKey("air", 1, 1);
+  c.set(a, "a", 1000);
+  now.advance(1);
+  c.set(b, "b", 1000);
+  c.set(other, "air", 1000);
+  const realSet = storage.setItem.bind(storage);
+  let failures = 1;
+  storage.setItem = (k, v) => {
+    if (failures-- > 0) {
+      const e = new Error("quota");
+      e.name = "QuotaExceededError";
+      throw e;
+    }
+    realSet(k, v);
+  };
+  now.advance(1);
+  const key = cacheKey("forecast", 3, 3);
+  assert.doesNotThrow(() => c.set(key, "new", 1000));
+  assert.equal(c.get(a), null, "oldest evicted");
+  assert.equal(c.get(b).value, "b");
+  assert.equal(c.get(key).value, "new");
+  assert.equal(c.get(other).value, "air", "other namespace untouched");
+});
+
+test("quota error: if the retry still fails, nothing throws and only the evicted entry is gone", () => {
+  const storage = new FakeStorage();
+  const now = clock(1000);
+  const c = createCache({ storage, now, maxLocationsPerApi: 1 });
+  const a = cacheKey("forecast", 1, 1);
+  const other = cacheKey("air", 1, 1);
+  c.set(a, "a", 1000);
+  c.set(other, "air", 1000);
+  storage.setItem = () => {
+    throw new Error("quota");
+  };
+  assert.doesNotThrow(() => c.set(cacheKey("forecast", 2, 2), "new", 1000));
+  assert.equal(c.get(a), null, "the one evicted entry is gone");
+  assert.equal(c.get(other).value, "air");
+  assert.equal(c.get(cacheKey("forecast", 2, 2)), null);
+});
+
+test("quota error with nothing to evict leaves the existing entry for the same key intact", () => {
   const storage = new FakeStorage();
   const c = createCache({ storage, now: clock() });
   const key = cacheKey("forecast", 1, 1);
   c.set(key, "old", 1000);
   storage.setItem = () => {
-    const e = new Error("quota");
-    e.name = "QuotaExceededError";
-    throw e;
+    throw new Error("quota");
   };
   assert.doesNotThrow(() => c.set(key, "new", 1000));
   assert.equal(c.get(key).value, "old");
+});
+
+test("savedAt in the future is never fresh", () => {
+  const storage = new FakeStorage();
+  const now = clock(10_000);
+  const c = createCache({ storage, now });
+  const key = cacheKey("forecast", 1, 1);
+  c.set(key, "v", 1000);
+  now.set(5_000); // clock moved backwards: savedAt (10_000) is in the future
+  assert.equal(c.get(key).fresh, false);
+  assert.equal(c.get(key).value, "v");
+  now.set(10_000);
+  assert.equal(c.get(key).fresh, true);
+});
+
+test("cacheKey never contains -0.00", () => {
+  assert.equal(cacheKey("forecast", -0.001, -0), "om:v1:forecast:0.00,0.00");
+  assert.equal(cacheKey("forecast", -0.004, 0.004), "om:v1:forecast:0.00,0.00");
+  assert.equal(cacheKey("forecast", -0.01, 1), "om:v1:forecast:-0.01,1.00");
 });
 
 test("eviction failure (removeItem throws) does not throw", () => {

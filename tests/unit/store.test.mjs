@@ -119,3 +119,37 @@ test("get inside a subscriber reflects the merged state", () => {
   s.set({ b: 2 });
   assert.deepEqual(observed, { a: 1, b: 2 });
 });
+
+test("a throwing subscriber is reported via onError; others still run; set does not throw", () => {
+  const errors = [];
+  const s = createStore({}, { onError: (e) => errors.push(e) });
+  const log = [];
+  const boom = new Error("boom");
+  s.subscribe(() => log.push("a"));
+  s.subscribe(() => {
+    throw boom;
+  });
+  s.subscribe(() => log.push("c"));
+  assert.doesNotThrow(() => s.set({ x: 1 }));
+  assert.deepEqual(log, ["a", "c"]);
+  assert.deepEqual(errors, [boom]);
+  assert.equal(s.get().x, 1);
+});
+
+test("default onError rethrows asynchronously via queueMicrotask", async () => {
+  const realQM = globalThis.queueMicrotask;
+  const queued = [];
+  globalThis.queueMicrotask = (fn) => queued.push(fn);
+  try {
+    const s = createStore({});
+    const boom = new Error("boom");
+    s.subscribe(() => {
+      throw boom;
+    });
+    assert.doesNotThrow(() => s.set({ x: 1 }));
+    assert.equal(queued.length, 1);
+    assert.throws(() => queued[0](), (e) => e === boom);
+  } finally {
+    globalThis.queueMicrotask = realQM;
+  }
+});
