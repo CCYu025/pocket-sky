@@ -5,25 +5,12 @@
  * The SVG is full-bleed with all content inside the maskable safe zone (central 80% circle), so
  * the same artwork serves the `any` and `maskable` purposes.
  */
-import { createRequire } from "node:module";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadPlaywright } from "../tests/e2e/helpers.mjs"; // same resolution as the e2e tests: createRequire, project dependency first, then the preinstalled tools dir
 
-const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-
-/** @returns {object} The playwright module (project dependency first, then the preinstalled tools dir). */
-function loadPlaywright() {
-  for (const id of ["playwright", "/opt/node-tools/node_modules/playwright"]) {
-    try {
-      return require(id);
-    } catch {
-      /* try the next one */
-    }
-  }
-  throw new Error("Playwright not found");
-}
 
 const svg = readFileSync(path.join(ROOT, "icons/icon.svg"), "utf8");
 const TARGETS = [

@@ -771,8 +771,8 @@ test("manifest: valid JSON, linked from the page, icons load (200, PNG, right si
   assert.match(res.headers()["content-type"], /manifest\+json|application\/json/);
   const m = await res.json();
   assert.deepEqual(
-    { name: m.name, short_name: m.short_name, start_url: m.start_url, scope: m.scope, display: m.display, background_color: m.background_color, theme_color: m.theme_color, lang: m.lang },
-    { name: "Pocket Sky", short_name: "PocketSky", start_url: "./#today", scope: "./", display: "standalone", background_color: "#FFF7D6", theme_color: "#FFF7D6", lang: "zh-Hant" },
+    { id: m.id, name: m.name, short_name: m.short_name, start_url: m.start_url, scope: m.scope, display: m.display, background_color: m.background_color, theme_color: m.theme_color, lang: m.lang },
+    { id: "./", name: "Pocket Sky", short_name: "PocketSky", start_url: "./#today", scope: "./", display: "standalone", background_color: "#FFF7D6", theme_color: "#FFF7D6", lang: "zh-Hant" },
   );
   assert.deepEqual(m.icons.map((i) => [i.sizes, i.purpose]), [["192x192", "any"], ["512x512", "any"], ["512x512", "maskable"]]);
   for (const icon of m.icons) {
