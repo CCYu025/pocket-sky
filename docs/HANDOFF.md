@@ -1,6 +1,6 @@
 # Pocket Sky — 交接文件
 
-> 最後更新：2026-11-21（M4 收尾中）。下次接手時先讀本文件，再讀 `docs/ARCHITECTURE.md`（唯一的規格來源）。
+> 最後更新：2026-11-22（M1–M5 全部完成）。下次接手時先讀本文件，再讀 `docs/ARCHITECTURE.md`（唯一的規格來源）。
 
 ## 1. 專案一句話
 
@@ -17,7 +17,7 @@
 | M2 | 今天頁：LCD、提醒、主題（日夜）、a11y、CSP | ✅ PR #2 已合併 |
 | M3 | 外出頁：通勤、運動、準備清單與評分規則 | ✅ PR #3 已合併 |
 | M4 | 地點搜尋／收藏、公司地點、出遊、manifest＋圖示 | ✅ PR #4 已合併 |
-| M5 | 離線降級、service worker、版面打磨、Lighthouse、部署 GitHub Pages | 🟡 分支 `m5-pwa-deploy`：離線顯示、SW、Lighthouse（P98/A100/BP100/SEO91，`docs/reports/lighthouse-m5.md`）、Pages workflow、`site` e2e、冒煙腳本皆完成並驗證；待辦：使用者把 Pages Source 設為「GitHub Actions」、合併到 `main`、跑冒煙測試（見下） |
+| M5 | 離線降級、service worker、版面打磨、Lighthouse、部署 GitHub Pages | ✅ PR #5 已合併，已部署到 https://ccyu025.github.io/pocket-sky/（Pages workflow 綠燈；線上 `sw.js` 首行為 `// SW_VERSION a88de5f51411`；冒煙測試 6 項全 PASS：載入、標題、溫度、SW、manifest、無 console error）。Lighthouse P98/A100/BP100/SEO91（`docs/reports/lighthouse-m5.md`） |
 
 ## 3. 交接當下的狀態（M4 收尾）
 
@@ -36,15 +36,17 @@
 
 M4 測試基準：unit 508、e2e 88。
 
-## 4. 下一步：M5 範圍（尚未寫規格）
+## 4. 下一步
 
-依先前顧問建議與累積的待辦：
-- Service worker：app shell cache-first、API network-first（已有 localStorage SWR，SW 效益有限，以離線開啟為主）；`scope: ./`。
-- 離線／降級細節、N6（資料超過 24h 且網路掛住時，等 8 秒才顯示舊資料 → 加載入狀態，目前已有 loading 但可再優化）。
-- 動畫細節打磨；準備清單右側標籤過寬導致左側理由換行（M3 已知排版問題）。
-- Lighthouse（手機）Performance ≥ 90、Accessibility ≥ 95。
-- 部署 GitHub Pages（需使用者在 repo Settings 開啟 Pages，或用 Actions 部署），部署後對正式網址跑冒煙測試。
-- 可選：運動評分加入日照因子、提醒推播（PWA）。
+專案里程碑 M1–M5 皆已完成並上線。可能的後續工作（尚未排定，皆需先寫規格再動工）：
+
+- 自架子集字型（取代 Google Fonts，並可收緊 CSP）。
+- 擴充地名搜尋涵蓋率，或改用／加入對中文地名較友善的地理編碼服務（目前 `墾丁`、`花蓮縣` 搜不到）。
+- 提醒推播（PWA push notifications）。
+- 運動評分加入日照因子。
+- 搜尋結果分頁（目前最多 8 筆）。
+
+**新里程碑的標準流程**：開新分支（如 `m6-xxx`）→ Lead 把規格寫入 `docs/ARCHITECTURE.md` 並取得使用者同意 → 派實作 agent（先寫會失敗的測試）→ 審查 agent 至少兩輪 → Lead 重跑 `npm test`、`npm run test:e2e` 並看截圖 → push、開 PR → CI 綠 → 使用者明確同意後合併 → Pages 部署後對正式網址跑 `npm run smoke -- https://ccyu025.github.io/pocket-sky/`。詳見 §5。
 
 ## 5. 工作流程（使用者指定，請延續）
 
@@ -62,7 +64,7 @@ M4 測試基準：unit 508、e2e 88。
 
 ## 6. 環境與工具備忘
 
-- **雲端環境**：個人環境 `pocket-sky`（只放行 `api.open-meteo.com`、`air-quality-api.open-meteo.com`、`geocoding-api.open-meteo.com`＋套件庫）。新 session 請選這個環境，否則契約測試會被代理擋（403）。
+- **雲端環境**：個人環境 `pocket-sky`（放行 `api.open-meteo.com`、`air-quality-api.open-meteo.com`、`geocoding-api.open-meteo.com`、`ccyu025.github.io`＋套件庫；後者供對正式網址跑冒煙測試）。沙盒 IP 可能撞到 Open-Meteo 的 forecast 每日上限，此時改用 fixtures（`SMOKE_FIXTURES=1`）。新 session 請選這個環境，否則契約測試會被代理擋（403）。
 - **GitHub**：Claude GitHub App 已安裝到 repo；push 用 `git push`；PR／merge／check-runs 用 `gh api` REST（GraphQL 被擋）。clone 是 shallow，若 `origin/main` 不存在：`git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*" && git fetch --depth=50 origin main`。
 - **Node**：v22。本機契約測試要 `NODE_USE_ENV_PROXY=1 npm run test:contract`（GitHub Actions 不需要）。
 - **Playwright**：預裝 v1.63.0（`/opt/node-tools/node_modules/playwright`），由 `tests/e2e/helpers.mjs` 的 `loadPlaywright()` 解析。**不要** `npm i playwright` 或 `playwright install`。CI 的 e2e job 會自行安裝同版本。
@@ -100,7 +102,7 @@ M4 測試基準：unit 508、e2e 88。
 ## M5 部署與冒煙測試（交接）
 - `sw-assets.js` 不再提交（建置產物）。本機直接開 repo 根目錄前先 `npm run sw`；e2e、`build:site`、Pages workflow 會自動產生。
 - 部署：Pages 尚未啟用。使用者在 Settings → Pages 把 Source 設為「GitHub Actions」（或經使用者同意後由 lead 用 API 啟用）。之後 push 到 `main`（或手動 `workflow_dispatch`）即部署，網址 `https://ccyu025.github.io/pocket-sky/`。
-- 部署後：`npm run smoke -- https://ccyu025.github.io/pocket-sky/`（Playwright + 真實 API；檢查載入、`度` 溫度、SW、manifest、無 console error）。冒煙腳本每個等待都有逾時（SW `ready` 15 秒），壞掉的部署會回報 FAIL 而不是卡住。尚未對正式網址執行；已用本機 `_site/` 搭配 `SMOKE_FIXTURES=1` 驗證腳本（當日 Open-Meteo forecast 因沙盒 IP 超過每日上限而回錯誤，Lighthouse 與冒煙驗證因此改用 fixtures）。
+- 部署後：`npm run smoke -- https://ccyu025.github.io/pocket-sky/`（Playwright + 真實 API；檢查載入、`度` 溫度、SW、manifest、無 console error）。冒煙腳本每個等待都有逾時（SW `ready` 15 秒），壞掉的部署會回報 FAIL 而不是卡住。已於 2026-11-22 對正式網址執行並全數通過（manifest 改在第二個分頁以瀏覽器 `fetch` 取得：app 的 CSP `connect-src` 不允許抓自己的 manifest，且 Node 端 request context 在只有瀏覽器走代理的環境會 `ENOTFOUND`）；先前已用本機 `_site/` 搭配 `SMOKE_FIXTURES=1` 驗證腳本（當日 Open-Meteo forecast 因沙盒 IP 超過每日上限而回錯誤，Lighthouse 與冒煙驗證因此改用 fixtures）。
 - Lighthouse 為手動工具：`npm run lighthouse`（約 2 分鐘；未達標或不可安裝時 exit 1；加 `-- --no-write` 只印出不寫 `docs/reports/`）。Lighthouse 不在 devDependencies，首次執行會以固定版本（13.6.0）`npm install --no-save` 到暫存目錄（`$LIGHTHOUSE_PREFIX`），需要連 npm registry 一次。殘留：`robots-txt` 稽核因嚴格 CSP 在 Lighthouse 內顯示失敗（工具限制，非檔案問題）。
 
 ## M5 審查修正（app-shell 模型）
