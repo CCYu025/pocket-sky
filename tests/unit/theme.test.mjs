@@ -134,13 +134,36 @@ test("theme-boot: auto uses ps:theme-last (night before first paint) and the col
 });
 
 test("theme-boot: nothing known leaves the default; garbage is ignored; never throws", () => {
-  assert.equal(boot({}).theme, undefined);
-  assert.equal(boot({ items: { "ps:theme": "purple", "ps:theme-last": "mauve" } }).theme, undefined);
+  assert.equal(boot({ nowMs: localMs(12) }).theme, undefined);
+  assert.equal(boot({ items: { "ps:theme": "purple", "ps:theme-last": "mauve" }, nowMs: localMs(12) }).theme, undefined);
   assert.doesNotThrow(() => boot({ throwing: true }));
-  assert.equal(boot({ throwing: true }).theme, undefined);
+  assert.equal(boot({ throwing: true, nowMs: localMs(12) }).theme, undefined);
   assert.doesNotThrow(() => boot({ items: { "ps:theme-last": "night" }, meta: false }));
   assert.equal(boot({ items: { "ps:theme-last": "night" }, meta: false }).theme, "night");
   assert.doesNotThrow(() => nodeVm.runInNewContext(BOOT, {}), "no window/document at all");
+});
+
+// ---- theme-boot: device clock as the last resort (no cache, no ps:theme-last) ----
+const localMs = (h, m = 0) => new Date(2026, 10, 21, h, m).getTime(); // device-local hour, independent of the test machine's zone
+
+test("theme-boot: first launch with no cache and no theme-last uses the device clock (18:00-06:00 is night)", () => {
+  for (const h of [18, 19, 23, 0, 3, 5]) assert.deepEqual(boot({ nowMs: localMs(h, h === 5 ? 59 : 0) }), { theme: "night", color: THEME_COLORS.night }, `hour ${h}`);
+  for (const h of [6, 9, 12, 17]) assert.equal(boot({ nowMs: localMs(h, h === 17 ? 59 : 0) }).theme, undefined, `hour ${h} keeps the day default`);
+  assert.equal(boot({ items: { "ps:theme": "auto" }, nowMs: localMs(22) }).theme, "night", "auto behaves like missing");
+});
+
+test("theme-boot: the device clock never overrides a pref, theme-last or a usable cache", () => {
+  assert.equal(boot({ items: { "ps:theme": "day" }, nowMs: localMs(22) }).theme, "day");
+  assert.equal(boot({ items: { "ps:theme-last": "day" }, nowMs: localMs(22) }).theme, "day");
+  assert.equal(boot({ items: { "ps:theme-last": "night" }, nowMs: localMs(12) }).theme, "night");
+  const items = { "om:v1:forecast:24.15,120.67": JSON.stringify({ value: { utc_offset_seconds: 28800, current: { is_day: 1 } }, savedAt: 1 }) };
+  assert.equal(boot({ items, nowMs: localMs(22) }).theme, "day", "cache decides (is_day 1)");
+});
+
+test("theme-boot: a throwing clock still never throws", () => {
+  const ctx = { window: { localStorage: { getItem: () => null, length: 0, key: () => null } }, document: { documentElement: { dataset: {} }, querySelector: () => null }, Date: class { static now() { throw new Error("clock"); } } };
+  assert.doesNotThrow(() => nodeVm.runInNewContext(BOOT, ctx));
+  assert.equal(ctx.document.documentElement.dataset.theme, undefined);
 });
 
 // ---- theme-boot: auto resolves day/night from the cached forecast before ps:theme-last ----

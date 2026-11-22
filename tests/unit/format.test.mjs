@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   compassZh, uvBand, aqiBand, humidityWord, intText, deltaText, dateLabel, clockOf, clockAt,
-  daylightPercent, daylightProgress, countdownText, hm,
+  daylightPercent, daylightProgress, countdownText, hm, dataBannerText,
 } from "../../js/ui/format.js";
 
 test("compassZh maps 16 points and wraps", () => {
@@ -92,4 +92,17 @@ test("daylightProgress: day fraction by day, night fraction (sunset -> next sunr
   assert.deepEqual(daylightProgress(vmAt("2026-11-21T05:00")), { phase: "night", pct: Math.round((711 / 787) * 100) });
   assert.equal(daylightProgress(vmAt("2026-11-21T23:59")).pct, Math.round((410 / 787) * 100));
   assert.equal(daylightProgress({ now: {}, today: {} }), null);
+});
+
+test("dataBannerText: stale, refreshing and offline texts; the date appears only beyond 24 h", () => {
+  const vm = (minuteKey) => ({ location: { utcOffsetSeconds: 28800 }, now: { minuteKey } });
+  const at = Date.UTC(2026, 10, 21, 6, 20); // 14:20 Taipei
+  assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-21T16:00") }), "資料時間 14:20・無法更新");
+  assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-21T16:00"), refreshing: true }), "資料時間 14:20・更新中…");
+  assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-22T14:20"), refreshing: true }), "資料時間 14:20・更新中…", "exactly 24 h: no date yet");
+  assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-22T14:21"), refreshing: true }), "資料時間 11/21 14:20・更新中…");
+  assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-30T09:00") }), "資料時間 11/21 14:20・無法更新");
+  assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-30T09:00"), offline: true, refreshing: true }), "離線中・顯示 11/21 14:20 的資料", "offline wins; the date rule applies beyond 24 h");
+  assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-22T14:20"), offline: true }), "離線中・顯示 14:20 的資料", "exactly 24 h: no date");
+  assert.equal(dataBannerText({ fetchedAt: at, vm: vm("2026-11-22T14:21"), offline: true }), "離線中・顯示 11/21 14:20 的資料");
 });

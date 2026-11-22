@@ -4,3 +4,7 @@ playwright-report/
 .DS_Store
 *.log
 .claude/worktrees/
+
+# generated (npm run sw)
+sw-assets.js
+_site/

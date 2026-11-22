@@ -18,6 +18,7 @@ import { exerciseModel, slotLabel, stepIndex } from "./ui/views/exercise.js";
 import { parseRoute } from "./ui/route.js";
 import { readOuting, writeOuting } from "./app/outing-state.js";
 import { createDebouncedAnnouncer, createOutingAnnouncer } from "./ui/announce.js";
+import { registerSW } from "./app/sw-register.js";
 
 /** @returns {Storage|object} localStorage, or an in-memory stand-in when unavailable. */
 function safeStorage() {
@@ -325,6 +326,9 @@ doc.addEventListener("visibilitychange", () => {
     controller.refreshIfStale(viewPlaces);
   }
 });
+// Offline-first: no requests while offline (the controller reads the cache only); refresh once when the network is back.
+window.addEventListener("online", () => controller.goOnline(viewPlaces));
+window.addEventListener("offline", () => controller.goOffline());
 setInterval(() => {
   if (!doc.hidden) controller.tick();
 }, 20000);
@@ -332,3 +336,8 @@ setInterval(() => {
 doc.documentElement.classList.toggle("is-hidden", doc.hidden);
 render();
 controller.init();
+// The update banner (sw-register.js) announces itself through the persistent live region.
+window.addEventListener("ps:announce", (e) => {
+  if (typeof e.detail === "string") live.textContent = e.detail;
+});
+registerSW(); // offline shell + update banner (no-op under ?nosw, __PS_NO_SW__ or without service worker support)

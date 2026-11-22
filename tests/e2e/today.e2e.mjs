@@ -234,12 +234,13 @@ test("night: first paint is already night (boot script), also while loading and 
 });
 
 test("theme boot: no stored theme stays day; explicit day beats the last resolved night", async () => {
-  const fresh = await open({});
+  // the context's device zone is America/New_York: 17:00Z is 12:00 there, so the first-launch device-clock rule says day
+  const fresh = await open({ now: "2026-11-21T17:00:00Z" });
   await trackTheme(fresh);
   await fresh.go();
   await waitReady(fresh.page);
-  assert.equal(await theme(fresh.page), "day");
-  assert.notEqual(await fresh.page.evaluate(() => window.__bodyTheme), "night");
+  // (the app's own resolution from the forecast may differ later: the device zone and the place are 13 h apart here)
+  assert.notEqual(await fresh.page.evaluate(() => window.__bodyTheme), "night", "first paint: daytime device clock keeps the default");
 
   const explicit = await open({ storage: { "ps:theme": "day", "ps:theme-last": "night" } });
   await trackTheme(explicit);
@@ -248,6 +249,17 @@ test("theme boot: no stored theme stays day; explicit day beats the last resolve
   assert.deepEqual(await explicit.page.evaluate(() => window.__themes), ["day"]);
   noErrors(fresh);
   noErrors(explicit);
+});
+
+test("theme boot: first-ever launch (no cache, no theme-last) at night on the device clock paints night at once", async () => {
+  // 03:00Z = 22:00 on the device (America/New_York); the forecast API is never needed for the first paint
+  const app = await open({ now: "2026-11-22T03:00:00Z" });
+  await trackTheme(app);
+  await app.go();
+  await app.page.locator("#view").waitFor();
+  assert.equal(await app.page.evaluate(() => window.__bodyTheme), "night", "night before the first paint, no day flash");
+  assert.equal((await app.page.evaluate(() => window.__themes))[0], "night");
+  noErrors(app);
 });
 
 test("LIGHT toggles the theme and persists across reload", async () => {

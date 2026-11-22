@@ -28,6 +28,9 @@ export const GEO_TIMEOUT_MS = 10000;
  * @property {string|null} notice Small notice line (e.g. default location in use).
  * @property {*} error Last error when `status === 'error'`.
  * @property {{lat:number, lon:number, name:string, source:'gps'|'default'|'place', id?:string}|null} location
+ * @property {boolean} refreshing True while a refresh is in flight behind a `stale` view (banner `更新中…` instead of `無法更新`).
+ * @property {boolean} offline True while `onLine()` is false (no requests are made; banner `離線中・顯示 HH:MM 的資料`). Nothing cached
+ *   while offline gives `status: 'error'` with `error = OFFLINE_ERROR` (`離線中，沒有可顯示的資料`).
  * @property {boolean} locating True while the device position is being resolved.
  * @property {number} locationUpdates Counts late GPS fixes that were applied after the timeout (the announcer says `已更新為目前位置`).
  * @property {string} current Current place: `'gps'` (default) or a saved place id (`ps:current`).
@@ -41,7 +44,14 @@ export const GEO_TIMEOUT_MS = 10000;
  * @property {object|null} vm
  * @property {*} error
  * @property {number|null} fetchedAt
+ * @property {boolean} [refreshing] As on `TodayState`.
  */
+
+/** Marker error of a place that has nothing cached while the device is offline (`errorText` shows `離線中，沒有可顯示的資料`). */
+export const OFFLINE_ERROR = Object.freeze({ name: "OfflineError", offline: true, message: "offline" });
+
+/** Cache entries older than this (and not fresh) are shown as `stale` while they refresh (the `maxStaleMs` of the API layer). */
+export const MAX_STALE_MS = 24 * 3600 * 1000;
 
 /**
  * `vm.hours` length for extra places (work, trip): 36 instead of the 24 of the current place, so a trip window
@@ -73,16 +83,22 @@ export function placeKey(place) {
  * @param {{lat:number, lon:number}} [deps.defaultLocation]
  * @param {typeof setTimeout} [deps.setTimer] Timer for the geolocation timeout (global `setTimeout` called as a method by default).
  * @param {typeof clearTimeout} [deps.clearTimer]
+ * @param {() => boolean} [deps.onLine] Connectivity probe (default `navigator.onLine !== false`). While it returns false no request is made:
+ *   cached data is shown (`offline`), or the offline error when nothing is cached.
+ * @param {number} [deps.maxStaleMs] Age above which a cached forecast counts as outdated (default 24 h): it is still rendered at once
+ *   (the API is called with `preferCached`), as `stale` + `refreshing`.
  * @returns {{store: object, init: () => Promise<void>, refresh: () => Promise<void>,
  *   selectCurrent: (id: string) => Promise<void>, ensurePlace: (place: object, opts?: {keep?: string[], force?: boolean}) => Promise<void>,
- *   refreshIfStale: (opts?: {wanted?: string[], active?: string[]}) => Promise<void>, tick: () => void, dismissAlert: () => void}}
+ *   refreshIfStale: (opts?: {wanted?: string[], active?: string[]}) => Promise<void>, goOnline: (opts?: {wanted?: string[], active?: string[]}) => Promise<void>,
+ *   goOffline: () => void, tick: () => void, dismissAlert: () => void}}
  */
 export function createController({
   api, cache, storage, now, geolocate, fetchImpl, defaultLocation = DEFAULT_LOCATION,
   setTimer = (fn, ms) => globalThis.setTimeout(fn, ms), clearTimer = (id) => globalThis.clearTimeout(id),
+  onLine = () => globalThis.navigator?.onLine !== false, maxStaleMs = MAX_STALE_MS,
 }) {
   /** @type {TodayState} */
-  const initial = { status: "loading", vm: null, alert: null, fetchedAt: null, notice: null, error: null, location: null, locating: false, locationUpdates: 0, current: "gps", places: {} };
+  const initial = { status: "loading", vm: null, alert: null, fetchedAt: null, notice: null, error: null, location: null, locating: false, locationUpdates: 0, current: "gps", places: {}, refreshing: false, offline: false };
   const store = createStore(initial);
 
   let gen = 0; // load generation: results of an older load are ignored
@@ -103,7 +119,10 @@ export function createController({
     return alert;
   }
 
-  function rebuild(status) {
+  /** True when an entry is outdated (older than `maxStaleMs`, not fresh). */
+  const outdated = (entry) => Boolean(entry) && !entry.fresh && now() - entry.savedAt > maxStaleMs;
+
+  function rebuild(status, refreshing = false) {
     const vm = toViewModel({ forecast: raw.forecast, air: raw.air, nowMs: now() });
     const savedAt = cache?.get(forecastKey)?.savedAt;
     store.set({
@@ -112,6 +131,7 @@ export function createController({
       alert: computeAlert(vm),
       fetchedAt: typeof savedAt === "number" ? savedAt : now(),
       error: null,
+      refreshing: status === "stale" && refreshing,
     });
   }
 
@@ -119,7 +139,7 @@ export function createController({
   function applyAir(air) {
     raw.air = air;
     const { status } = store.get();
-    if (raw.forecast && (status === "ready" || status === "stale")) rebuild(status);
+    if (raw.forecast && (status === "ready" || status === "stale")) rebuild(status, store.get().refreshing);
   }
 
   /**
@@ -206,15 +226,30 @@ export function createController({
       store.set({ location });
     }
 
+    if (!onLine()) {
+      // Offline: no request. Show whatever is cached (any age) as stale, else the offline message.
+      const fe = cache?.get(fKey);
+      if (fe) raw.forecast = fe.value[0] ?? raw.forecast;
+      if (raw.forecast) {
+        raw.air = cache?.get(aKey)?.value?.[0] ?? raw.air;
+        store.set({ offline: true });
+        rebuild("stale");
+      } else {
+        store.set({ offline: true, status: "error", vm: null, alert: null, error: OFFLINE_ERROR, fetchedAt: null });
+      }
+      return;
+    }
+    store.set({ offline: false });
+
     let failed = false;
     let updated = false; // a background refresh already applied newer data
-    const base = { cache, now, fetchImpl };
+    const base = { cache, now, fetchImpl, preferCached: true, maxStaleMs };
     const forecastDeps = {
       ...base,
       onError: (err) => {
         if (myGen !== gen || (err && err.phase === "onUpdate")) return;
         failed = true;
-        if (raw.forecast) store.set({ status: "stale" });
+        if (raw.forecast) store.set({ status: "stale", refreshing: false });
       },
       onUpdate: (fresh, meta) => {
         if (myGen !== gen || meta?.key !== fKey) return;
@@ -247,6 +282,7 @@ export function createController({
     } catch (error) {
       if (myGen !== gen) return;
       if (raw.forecast) store.set({ status: "stale" });
+      else if (!onLine()) store.set({ offline: true, status: "error", vm: null, alert: null, error: OFFLINE_ERROR, fetchedAt: null }); // dropped while in flight
       else store.set({ status: "error", vm: null, alert: null, error });
       return;
     }
@@ -255,8 +291,9 @@ export function createController({
       raw.forecast = forecast[0];
       // A stale cache hit has a refresh in flight: stay "stale" until it lands (onUpdate) or fails.
       const entry = cache?.get(fKey);
-      const refreshing = Boolean(entry) && !entry.fresh;
-      rebuild(failed || (wasStale && refreshing) ? "stale" : "ready");
+      const refreshing = Boolean(entry) && !entry.fresh && !failed;
+      // stale: a failed refresh, one in flight behind an outdated entry (> maxStaleMs) or behind a view that was already stale
+      rebuild(failed || (refreshing && (wasStale || outdated(entry))) ? "stale" : "ready", refreshing);
     }
     await airDone;
   }
@@ -281,7 +318,7 @@ export function createController({
     setEntry(key, null);
   }
 
-  function rebuildPlace(key, status) {
+  function rebuildPlace(key, status, refreshing = false) {
     const rec = extra.get(key);
     if (!rec?.raw.forecast) return;
     const savedAt = cache?.get(key)?.savedAt;
@@ -290,6 +327,7 @@ export function createController({
       vm: toViewModel({ forecast: rec.raw.forecast, air: rec.raw.air, nowMs: now(), hoursAhead: EXTRA_HOURS }),
       error: null,
       fetchedAt: typeof savedAt === "number" ? savedAt : now(),
+      refreshing: status === "stale" && refreshing,
     });
   }
 
@@ -301,9 +339,22 @@ export function createController({
     const wasStale = prev?.status === "stale"; // same rule as the current place: only an already-stale entry stays so while refreshing
     if (!rec.raw.forecast) setEntry(key, { status: "loading", vm: null, error: null, fetchedAt: null });
     else if (prev && prev.status === "error") setEntry(key, { ...prev, status: "stale", error: null });
+    if (!onLine()) {
+      const fe = cache?.get(key);
+      if (fe) rec.raw.forecast = fe.value[0] ?? rec.raw.forecast;
+      if (rec.raw.forecast) {
+        rec.raw.air = cache?.get(aKey)?.value?.[0] ?? rec.raw.air;
+        store.set({ offline: true });
+        rebuildPlace(key, "stale");
+      } else {
+        store.set({ offline: true });
+        setEntry(key, { status: "error", vm: null, error: OFFLINE_ERROR, fetchedAt: null });
+      }
+      return;
+    }
     let failed = false;
     let updated = false;
-    const base = { cache, now, fetchImpl };
+    const base = { cache, now, fetchImpl, preferCached: true, maxStaleMs };
     const forecastDeps = {
       ...base,
       onError: (err) => {
@@ -325,14 +376,14 @@ export function createController({
       onUpdate: (fresh, meta) => {
         if (myGen !== rec.gen || meta?.key !== aKey) return;
         rec.raw.air = fresh[0] ?? null;
-        if (rec.raw.forecast) rebuildPlace(key, store.get().places[key]?.status ?? "ready");
+        if (rec.raw.forecast) rebuildPlace(key, store.get().places[key]?.status ?? "ready", store.get().places[key]?.refreshing);
       },
     };
     const airDone = api.getAirQuality([place], airDeps).then(
       (air) => {
         if (myGen !== rec.gen) return;
         rec.raw.air = air?.[0] ?? null;
-        if (rec.raw.forecast) rebuildPlace(key, store.get().places[key]?.status ?? "ready");
+        if (rec.raw.forecast) rebuildPlace(key, store.get().places[key]?.status ?? "ready", store.get().places[key]?.refreshing);
       },
       () => {},
     );
@@ -342,15 +393,18 @@ export function createController({
     } catch (error) {
       if (myGen !== rec.gen) return;
       if (rec.raw.forecast) rebuildPlace(key, "stale");
-      else setEntry(key, { status: "error", vm: null, error, fetchedAt: null });
+      else if (!onLine()) {
+        store.set({ offline: true });
+        setEntry(key, { status: "error", vm: null, error: OFFLINE_ERROR, fetchedAt: null }); // dropped while in flight
+      } else setEntry(key, { status: "error", vm: null, error, fetchedAt: null });
       return;
     }
     if (myGen !== rec.gen) return;
     if (!updated) {
       rec.raw.forecast = forecast[0];
       const entry = cache?.get(key);
-      const refreshing = Boolean(entry) && !entry.fresh; // a stale cache hit has a refresh in flight
-      rebuildPlace(key, failed || (wasStale && refreshing) ? "stale" : "ready");
+      const refreshing = Boolean(entry) && !entry.fresh && !failed; // a stale cache hit has a refresh in flight
+      rebuildPlace(key, failed || (refreshing && (wasStale || outdated(entry))) ? "stale" : "ready", refreshing);
     }
     await airDone;
   }
@@ -462,22 +516,48 @@ export function createController({
      * Reload when the cached forecast is not fresh (tab became visible): the current place, plus only
      * the extra places the visible view uses (`wanted`), so Today never refreshes the work or trip place.
      * When `active` (the keys of the work and trip places that are currently set) is given, extra
-     * records outside `active` and `wanted` are dropped (cleared places).
+     * records outside `active` and `wanted` are dropped (cleared places). Offline it only sets the flag: data shown as `ready` stays `ready`.
      * @param {{wanted?: string[], active?: string[]}} [opts] Place keys (`placeKey`).
      * @returns {Promise<void>}
      */
     async refreshIfStale({ wanted = [], active = null } = {}) {
       if (!loc) return;
       if (active) for (const k of [...extra.keys()]) if (!active.includes(k) && !wanted.includes(k)) dropPlace(k);
+      // Offline there is nothing to refresh: data that is on screen as `ready` must not become `stale` (it would be announced).
+      const offline = !onLine();
+      if (offline) store.set({ offline: true });
       const stalePlaces = [];
       for (const key of wanted) {
         const rec = extra.get(key);
         const e = store.get().places[key];
-        if (rec && e && !rec.promise && !(e.status === "ready" && cache?.get(key)?.fresh)) stalePlaces.push(key);
+        if (rec && e && !rec.promise && !(e.status === "ready" && (offline || cache?.get(key)?.fresh))) stalePlaces.push(key);
       }
       const others = stalePlaces.map(startPlace);
-      if (cache?.get(forecastKey)?.fresh && store.get().status === "ready") return void (await Promise.all(others));
+      if (store.get().status === "ready" && (offline || cache?.get(forecastKey)?.fresh)) return void (await Promise.all(others));
       await Promise.all([load(loc), ...others]);
+    },
+
+    /**
+     * The device is back online (`online` event): clear the offline flag and refresh the current place plus the
+     * wanted extras once each (a fresh cache entry makes no request; requests of one key are shared).
+     * @param {{wanted?: string[], active?: string[]}} [opts] As `refreshIfStale`.
+     * @returns {Promise<void>}
+     */
+    async goOnline({ wanted = [], active = null } = {}) {
+      store.set({ offline: false });
+      if (!loc) return;
+      if (active) for (const k of [...extra.keys()]) if (!active.includes(k) && !wanted.includes(k)) dropPlace(k);
+      const others = wanted.filter((k) => extra.has(k)).map(startPlace);
+      await Promise.all([load(loc), ...others]);
+    },
+
+    /**
+     * The device went offline (`offline` event): mark it so the banner switches at once; no request is made
+     * and the data on screen stays. Later loads read the cache only.
+     * @returns {void}
+     */
+    goOffline() {
+      store.set({ offline: true });
     },
 
     /**

@@ -16,8 +16,8 @@
 | M1 | 資料層：time / cache / store / Open-Meteo client / derive | ✅ PR #1 已合併 |
 | M2 | 今天頁：LCD、提醒、主題（日夜）、a11y、CSP | ✅ PR #2 已合併 |
 | M3 | 外出頁：通勤、運動、準備清單與評分規則 | ✅ PR #3 已合併 |
-| M4 | 地點搜尋／收藏、公司地點、出遊、manifest＋圖示 | 🟡 分支 `m4-places`，全部修正完成，PR #4 已開、等使用者同意合併（見 §3） |
-| M5 | 動畫細節、離線降級、service worker、Lighthouse、部署 GitHub Pages | ⬜ 未開始 |
+| M4 | 地點搜尋／收藏、公司地點、出遊、manifest＋圖示 | ✅ PR #4 已合併 |
+| M5 | 離線降級、service worker、版面打磨、Lighthouse、部署 GitHub Pages | 🟡 分支 `m5-pwa-deploy`：離線顯示、SW、Lighthouse（P98/A100/BP100/SEO91，`docs/reports/lighthouse-m5.md`）、Pages workflow、`site` e2e、冒煙腳本皆完成並驗證；待辦：使用者把 Pages Source 設為「GitHub Actions」、合併到 `main`、跑冒煙測試（見下） |
 
 ## 3. 交接當下的狀態（M4 收尾）
 
@@ -96,3 +96,17 @@ M4 測試基準：unit 508、e2e 88。
 - 搜尋最多顯示 8 筆，無分頁。
 - manifest 的 maskable 圖示與一般圖示相同（滿版設計，可接受）。
 - 第一次在夜間開啟（無任何快取）仍會先畫日間再切夜間。
+
+## M5 部署與冒煙測試（交接）
+- `sw-assets.js` 不再提交（建置產物）。本機直接開 repo 根目錄前先 `npm run sw`；e2e、`build:site`、Pages workflow 會自動產生。
+- 部署：Pages 尚未啟用。使用者在 Settings → Pages 把 Source 設為「GitHub Actions」（或經使用者同意後由 lead 用 API 啟用）。之後 push 到 `main`（或手動 `workflow_dispatch`）即部署，網址 `https://ccyu025.github.io/pocket-sky/`。
+- 部署後：`npm run smoke -- https://ccyu025.github.io/pocket-sky/`（Playwright + 真實 API；檢查載入、`度` 溫度、SW、manifest、無 console error）。冒煙腳本每個等待都有逾時（SW `ready` 15 秒），壞掉的部署會回報 FAIL 而不是卡住。尚未對正式網址執行；已用本機 `_site/` 搭配 `SMOKE_FIXTURES=1` 驗證腳本（當日 Open-Meteo forecast 因沙盒 IP 超過每日上限而回錯誤，Lighthouse 與冒煙驗證因此改用 fixtures）。
+- Lighthouse 為手動工具：`npm run lighthouse`（約 2 分鐘；未達標或不可安裝時 exit 1；加 `-- --no-write` 只印出不寫 `docs/reports/`）。Lighthouse 不在 devDependencies，首次執行會以固定版本（13.6.0）`npm install --no-save` 到暫存目錄（`$LIGHTHOUSE_PREFIX`），需要連 npm registry 一次。殘留：`robots-txt` 稽核因嚴格 CSP 在 Lighthouse 內顯示失敗（工具限制，非檔案問題）。
+
+## M5 審查修正（app-shell 模型）
+- 導覽（scope 根目錄 `./`、`index.html`）由 SW 從「目前版本」的 shell cache 優先提供，HTML／CSS／JS／CSP 永遠同一版；新版只經更新橫幅（`有新版本` → `重新整理`）進來。其他路徑直接走網路（404 原樣回傳，離線則失敗），不再有離線深層連結回退。
+- 註冊使用 `updateViaCache: 'none'`，且 `build-site` 在 `_site/sw.js` 第一行寫入 `// SW_VERSION <hash>`（repo 內的 `sw.js` 保持通用），Pages 的 `max-age=600` 不會擋住更新偵測。
+- 兩個分頁：另一個分頁已啟用新版時，本分頁橫幅改為 `已更新，重新整理以載入新版`，按鍵即重新載入。
+- 離線橫幅超過 24 小時會帶日期（`離線中・顯示 MM/DD HH:MM 的資料`）。
+- `pages.yml` 拆成 `unit`、`e2e`、`deploy`（`needs` 前兩者）；單元測試與建置不需要 `npm ci`。
+- `?nosw` 只跳過註冊，不會解除已存在的 worker；`robots.txt` 在子路徑下不會被爬蟲讀取（SEO 提升來自 meta description），保留無妨。

@@ -12,6 +12,7 @@ import { cacheKey } from "../../cache.js";
 /** Picker modes: choose the current place, the work place or the trip destination. */
 export const MODES = Object.freeze(["current", "work", "trip"]);
 export const SEARCH_ERROR = "搜尋失敗，請稍後再試";
+export const SEARCH_OFFLINE = "離線中，無法搜尋";
 
 const TITLES = { current: "選擇地點", work: "設定公司地點", trip: "選擇出遊地點" };
 const LEADS = {
@@ -56,6 +57,8 @@ export function pickerReduce(state, action) {
       return { ...state, status: "done", results: action.results ?? [], usedQuery: action.usedQuery ?? "", searched: String(action.query ?? action.usedQuery ?? "") };
     case "error":
       return { ...state, status: "error", results: [] };
+    case "offline": // a search was asked for while offline: nothing was requested
+      return { ...state, status: "offline", results: [], message: "" };
     case "say":
       return { ...state, message: String(action.text ?? "") };
     default:
@@ -75,6 +78,7 @@ export function liveText(state) {
     case "searching": return "搜尋中…";
     case "done": return state.results.length ? `找到 ${state.results.length} 個地點` : `找不到「${state.searched || state.usedQuery}」`;
     case "error": return SEARCH_ERROR;
+    case "offline": return SEARCH_OFFLINE;
     default: return "";
   }
 }

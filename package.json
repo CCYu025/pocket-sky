@@ -11,6 +11,11 @@
     "test": "node --test \"tests/unit/**/*.test.mjs\"",
     "test:contract": "node --test \"tests/contract/**/*.test.mjs\"",
     "fixtures": "node tests/contract/capture-fixtures.mjs",
+    "sw": "node scripts/gen-sw-assets.mjs",
+    "pretest:e2e": "node scripts/gen-sw-assets.mjs",
+    "smoke": "node tests/smoke/smoke.mjs",
+    "build:site": "node scripts/build-site.mjs",
+    "lighthouse": "node scripts/lighthouse.mjs",
     "test:e2e": "node --test \"tests/e2e/**/*.e2e.mjs\""
   },
   "devDependencies": {
