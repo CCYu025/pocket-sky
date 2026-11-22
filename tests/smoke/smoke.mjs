@@ -60,9 +60,18 @@ try {
   check("service worker registers", sw.startsWith(base), sw);
 
   const mHref = await page.locator('link[rel="manifest"]').getAttribute("href");
-  const mRes = await ctx.request.get(new URL(mHref, base).href);
-  const mJson = mRes.ok() ? await mRes.json().catch(() => null) : null;
-  check("manifest fetches", Boolean(mJson?.name), `${mRes.status()} ${mJson?.name ?? ""}`);
+  const mUrl = new URL(mHref, base).href;
+  // The app's CSP connect-src forbids fetching its own manifest, so fetch from a second page parked on the
+  // manifest URL (same origin, no CSP). Goes through the browser network stack, not Node's.
+  const mPage = await ctx.newPage();
+  await mPage.goto(mUrl);
+  const mRes = await mPage.evaluate(async (u) => {
+    const r = await fetch(u);
+    return { status: r.status, json: await r.json().catch(() => null) };
+  }, mUrl);
+  await mPage.close();
+  const mJson = mRes.status >= 200 && mRes.status < 300 ? mRes.json : null;
+  check("manifest fetches", Boolean(mJson?.name), `${mRes.status} ${mJson?.name ?? ""}`);
 
   check("no console errors", errors.length === 0, errors.join(" | "));
 } catch (e) {
