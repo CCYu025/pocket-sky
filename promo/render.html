@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Pocket Sky promo renderer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;900&family=Share+Tech+Mono&display=swap">
+<style>html,body{margin:0;background:#000}canvas{display:block}</style>
+<body>
+<canvas id="cv"></canvas>
+<script src="shots/regions.js"></script>
+<script src="engine.js"></script>
+<script src="variants/v01.js"></script>
+<script src="variants/beatgrid-B.js"></script>
+<script src="variants/v06.js"></script>
+<script>
+/* Deterministic frame renderer. render.mjs calls setup() once and then drawAt(t) per frame.
+   The film is laid out on a fixed logical 960x540 stage (the size v06 was designed on) and scaled to the output size,
+   so 1080p / 4K / 540p previews are the same picture. A different aspect ratio is letterboxed. */
+window.__fonts = '';
+window.setup = async function (o) {
+  var v = PromoVariants.find(function (x) { return x.id === (o.variant || '06'); });
+  var cfg = v.config, LW = 960, LH = 540;
+  window.__eng = PromoEngine.create(Object.assign({}, cfg, { W: LW, H: LH }));
+  var cv = document.getElementById('cv'); cv.width = o.width; cv.height = o.height; window.__ctx = cv.getContext('2d');
+  window.__k = Math.min(o.width / LW, o.height / LH); window.__ox = (o.width - LW * window.__k) / 2; window.__oy = (o.height - LH * window.__k) / 2;
+  await window.__eng.ready;
+  /* fonts: Google Fonts CSS is slice-based (unicode-range), so load every CJK glyph the film can draw */
+  var srcs = await Promise.all(['engine.js', 'variants/v01.js', 'variants/v06.js'].map(function (f) { return fetch(f).then(function (r) { return r.text(); }); }));
+  var src = srcs.join('') + JSON.stringify(cfg) + (o.extraText || '');
+  var chars = Array.from(new Set(src.replace(/[\x00-\x7f]/g, '').split(''))).join('') + '0123456789:/°-';
+  var ok = true;
+  try {
+    await document.fonts.ready;
+    for (var w of ['500', '900']) { var r = await document.fonts.load(w + ' 36px "Noto Sans TC"', chars); ok = ok && r.length > 0; }
+    var m = await document.fonts.load('400 28px "Share Tech Mono"', 'POCKET SKY 0123456789:'); ok = ok && m.length > 0;
+  } catch (e) { ok = false; }
+  window.__fonts = ok ? 'google-fonts' : 'FALLBACK';
+  return { duration: window.__eng.duration, fonts: window.__fonts, beats: window.__eng.beats, W: LW, H: LH, audio: window.__eng.audio };
+};
+window.drawAt = function (t) {
+  var c = window.__ctx, k = window.__k;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.fillStyle = '#07080C'; c.fillRect(0, 0, c.canvas.width, c.canvas.height);
+  c.setTransform(k, 0, 0, k, window.__ox, window.__oy); window.__eng.render(c, t); c.setTransform(1, 0, 0, 1, 0, 0);
+};
+window.frameDataURL = function () { return document.getElementById('cv').toDataURL('image/png'); };
+</script>

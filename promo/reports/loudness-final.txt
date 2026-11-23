@@ -1,0 +1,4 @@
+pocket-sky-promo-1080p60-music-final.mp4  (video stream copied from the first music mux, audio re-mastered with promo/audio/master.mjs)
+before (loudnorm TP=-1.5, single AAC encode):  I = -14.1 LUFS   true peak = -1.3 dBTP   (target -1.5: FAIL)
+after  (headroom + limiter + measure-after-AAC): I = -14.1 LUFS   true peak = -1.9 dBTP   LRA 1.1 LU   (target <= -1.5: ok)
+ffprobe: video 1920x1080 60 fps h264, 2442 frames, 40.700 s; audio aac 48 kHz, 40.700 s

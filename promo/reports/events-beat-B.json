@@ -1,0 +1,652 @@
+[
+ {
+  "name": "sign on",
+  "t": 0,
+  "grid": "beat",
+  "nearest": 0,
+  "beatIdx": 0,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 0
+ },
+ {
+  "name": "benefit line",
+  "t": 0.5524,
+  "grid": "beat",
+  "nearest": 0.5524,
+  "beatIdx": 1,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -2.3999999999999577
+ },
+ {
+  "name": "pulse departs",
+  "t": 2.2647,
+  "grid": "beat",
+  "nearest": 2.2647,
+  "beatIdx": 4,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 1.9666666666666721
+ },
+ {
+  "name": "LCD arrive",
+  "t": 3.9458,
+  "grid": "beat",
+  "nearest": 3.9458,
+  "beatIdx": 7,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": 4.1999999999999815
+ },
+ {
+  "name": "LCD count step 1 (=3)",
+  "t": 4.526,
+  "grid": "8th",
+  "nearest": 4.526,
+  "beatIdx": 8,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 7.333333333333414
+ },
+ {
+  "name": "LCD count step 2 (=7)",
+  "t": 4.8076,
+  "grid": "8th",
+  "nearest": 4.8076,
+  "beatIdx": 8.5,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -7.600000000000051
+ },
+ {
+  "name": "LCD count step 3 (=10)",
+  "t": 5.0892,
+  "grid": "8th",
+  "nearest": 5.0892,
+  "beatIdx": 9,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -5.866666666666909
+ },
+ {
+  "name": "LCD count step 4 (=14)",
+  "t": 5.3719,
+  "grid": "8th",
+  "nearest": 5.3719,
+  "beatIdx": 9.5,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -5.233333333333867
+ },
+ {
+  "name": "LCD count step 5 (=17)",
+  "t": 5.6546,
+  "grid": "8th",
+  "nearest": 5.6546,
+  "beatIdx": 10,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -4.5999999999999375
+ },
+ {
+  "name": "LCD count step 6 (=20)",
+  "t": 5.930400000000001,
+  "grid": "8th",
+  "nearest": 5.930400000000001,
+  "beatIdx": 10.5,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": 2.9333333333330103
+ },
+ {
+  "name": "LCD count step 7 (=23)",
+  "t": 6.2062,
+  "grid": "8th",
+  "nearest": 6.2062,
+  "beatIdx": 11,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -6.199999999999761
+ },
+ {
+  "name": "LCD hold end / morph start",
+  "t": 6.7855,
+  "grid": "beat",
+  "nearest": 6.7855,
+  "beatIdx": 12,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": -2.16666666666665
+ },
+ {
+  "name": "Today copy line",
+  "t": 7.3387,
+  "grid": "beat",
+  "nearest": 7.3387,
+  "beatIdx": 13,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -5.366666666667186
+ },
+ {
+  "name": "Today morph end",
+  "t": 7.9211,
+  "grid": "beat",
+  "nearest": 7.9211,
+  "beatIdx": 14,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -4.433333333333067
+ },
+ {
+  "name": "Today deal start",
+  "t": 8.4691,
+  "grid": "beat",
+  "nearest": 8.4691,
+  "beatIdx": 15,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -2.433333333332399
+ },
+ {
+  "name": "Today deal end = hop start",
+  "t": 9.0493,
+  "grid": "beat",
+  "nearest": 9.0493,
+  "beatIdx": 16,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 0.700000000000145
+ },
+ {
+  "name": "通勤: hop start",
+  "t": 9.0493,
+  "grid": "beat",
+  "nearest": 9.0493,
+  "beatIdx": 16,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 0.700000000000145
+ },
+ {
+  "name": "通勤: arrival",
+  "t": 9.5959,
+  "grid": "beat",
+  "nearest": 9.5959,
+  "beatIdx": 17,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": 4.099999999999326
+ },
+ {
+  "name": "通勤: caption in",
+  "t": 9.5959,
+  "grid": "beat",
+  "nearest": 9.5959,
+  "beatIdx": 17,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": 4.099999999999326
+ },
+ {
+  "name": "通勤: TAP",
+  "t": 11.3083,
+  "grid": "beat",
+  "nearest": 11.3083,
+  "beatIdx": 20,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": -8.29999999999842
+ },
+ {
+  "name": "通勤: result line",
+  "t": 11.3083,
+  "grid": "beat",
+  "nearest": 11.3083,
+  "beatIdx": 20,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": -8.29999999999842
+ },
+ {
+  "name": "通勤: deal start",
+  "t": 12.9881,
+  "grid": "beat",
+  "nearest": 12.9881,
+  "beatIdx": 23,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -4.766666666666808
+ },
+ {
+  "name": "通勤: deal end",
+  "t": 13.5547,
+  "grid": "beat",
+  "nearest": 13.5547,
+  "beatIdx": 24,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": -4.699999999999704
+ },
+ {
+  "name": "運動: hop start",
+  "t": 13.5547,
+  "grid": "beat",
+  "nearest": 13.5547,
+  "beatIdx": 24,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": -4.699999999999704
+ },
+ {
+  "name": "運動: arrival",
+  "t": 14.1225,
+  "grid": "beat",
+  "nearest": 14.1225,
+  "beatIdx": 25,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -5.833333333333357
+ },
+ {
+  "name": "運動: caption in",
+  "t": 14.1225,
+  "grid": "beat",
+  "nearest": 14.1225,
+  "beatIdx": 25,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -5.833333333333357
+ },
+ {
+  "name": "運動: TAP",
+  "t": 15.8344,
+  "grid": "beat",
+  "nearest": 15.8344,
+  "beatIdx": 28,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": -1.0666666666665492
+ },
+ {
+  "name": "運動: result line",
+  "t": 15.8344,
+  "grid": "beat",
+  "nearest": 15.8344,
+  "beatIdx": 28,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": -1.0666666666665492
+ },
+ {
+  "name": "運動: deal start",
+  "t": 17.4976,
+  "grid": "beat",
+  "nearest": 17.4976,
+  "beatIdx": 31,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": 2.400000000001512
+ },
+ {
+  "name": "運動: deal end",
+  "t": 18.094,
+  "grid": "beat",
+  "nearest": 18.094,
+  "beatIdx": 32,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 6.000000000000227
+ },
+ {
+  "name": "出遊: hop start",
+  "t": 18.094,
+  "grid": "beat",
+  "nearest": 18.094,
+  "beatIdx": 32,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 6.000000000000227
+ },
+ {
+  "name": "出遊: arrival",
+  "t": 18.6414,
+  "grid": "beat",
+  "nearest": 18.6414,
+  "beatIdx": 33,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -8.066666666667999
+ },
+ {
+  "name": "出遊: caption in",
+  "t": 18.6414,
+  "grid": "beat",
+  "nearest": 18.6414,
+  "beatIdx": 33,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -8.066666666667999
+ },
+ {
+  "name": "出遊: TAP",
+  "t": 20.3478,
+  "grid": "beat",
+  "nearest": 20.3478,
+  "beatIdx": 36,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 2.200000000001978
+ },
+ {
+  "name": "出遊: result line",
+  "t": 20.3478,
+  "grid": "beat",
+  "nearest": 20.3478,
+  "beatIdx": 36,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 2.200000000001978
+ },
+ {
+  "name": "出遊: deal start",
+  "t": 22.0337,
+  "grid": "beat",
+  "nearest": 22.0337,
+  "beatIdx": 39,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -0.3666666666646279
+ },
+ {
+  "name": "出遊: deal end",
+  "t": 22.6147,
+  "grid": "beat",
+  "nearest": 22.6147,
+  "beatIdx": 40,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 1.9666666666680044
+ },
+ {
+  "name": "地點: hop start",
+  "t": 22.6147,
+  "grid": "beat",
+  "nearest": 22.6147,
+  "beatIdx": 40,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 1.9666666666680044
+ },
+ {
+  "name": "地點: arrival",
+  "t": 23.162,
+  "grid": "beat",
+  "nearest": 23.162,
+  "beatIdx": 41,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": 4.666666666668817
+ },
+ {
+  "name": "地點: caption in",
+  "t": 23.162,
+  "grid": "beat",
+  "nearest": 23.162,
+  "beatIdx": 41,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": 4.666666666668817
+ },
+ {
+  "name": "地點: TAP",
+  "t": 24.8793,
+  "grid": "beat",
+  "nearest": 24.8793,
+  "beatIdx": 44,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 4.033333333332223
+ },
+ {
+  "name": "地點: result line",
+  "t": 24.8793,
+  "grid": "beat",
+  "nearest": 24.8793,
+  "beatIdx": 44,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 4.033333333332223
+ },
+ {
+  "name": "地點: deal start",
+  "t": 26.557,
+  "grid": "beat",
+  "nearest": 26.557,
+  "beatIdx": 47,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -6.999999999997897
+ },
+ {
+  "name": "地點: deal end",
+  "t": 27.1381,
+  "grid": "beat",
+  "nearest": 27.1381,
+  "beatIdx": 48,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": -4.766666666668584
+ },
+ {
+  "name": "LIGHT: hop start",
+  "t": 27.1381,
+  "grid": "beat",
+  "nearest": 27.1381,
+  "beatIdx": 48,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": -4.766666666668584
+ },
+ {
+  "name": "LIGHT: arrival",
+  "t": 27.6854,
+  "grid": "beat",
+  "nearest": 27.6854,
+  "beatIdx": 49,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -2.0666666666677713
+ },
+ {
+  "name": "LIGHT: caption in",
+  "t": 27.6854,
+  "grid": "beat",
+  "nearest": 27.6854,
+  "beatIdx": 49,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -2.0666666666677713
+ },
+ {
+  "name": "LIGHT: TAP",
+  "t": 29.3973,
+  "grid": "beat",
+  "nearest": 29.3973,
+  "beatIdx": 52,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 2.69999999999726
+ },
+ {
+  "name": "LIGHT: result line",
+  "t": 29.3973,
+  "grid": "beat",
+  "nearest": 29.3973,
+  "beatIdx": 52,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 2.69999999999726
+ },
+ {
+  "name": "arc reveal (fan)",
+  "t": 31.659,
+  "grid": "beat",
+  "nearest": 31.659,
+  "beatIdx": 56,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 7.666666666668931
+ },
+ {
+  "name": "fold",
+  "t": 33.9187,
+  "grid": "beat",
+  "nearest": 33.9187,
+  "beatIdx": 60,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": -2.033333333336884
+ },
+ {
+  "name": "park slide start",
+  "t": 35.0459,
+  "grid": "beat",
+  "nearest": 35.0459,
+  "beatIdx": 62,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": 4.099999999993997
+ },
+ {
+  "name": "title typing start",
+  "t": 36.1757,
+  "grid": "beat",
+  "nearest": 36.1757,
+  "beatIdx": 64,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 7.633333333330938
+ },
+ {
+  "name": "tagline",
+  "t": 36.7211,
+  "grid": "beat",
+  "nearest": 36.7211,
+  "beatIdx": 65,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -4.433333333331291
+ },
+ {
+  "name": "URL box sweep",
+  "t": 37.01165,
+  "grid": "8th",
+  "nearest": 37.01165,
+  "beatIdx": 65.5,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": 5.0166666666626725
+ },
+ {
+  "name": "URL chars step 1",
+  "t": 37.3022,
+  "grid": "16th",
+  "nearest": 37.3022,
+  "beatIdx": 66,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -2.200000000001978
+ },
+ {
+  "name": "URL chars step 2",
+  "t": 37.439,
+  "grid": "16th",
+  "nearest": 37.439,
+  "beatIdx": 66.25,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -5.666666666670039
+ },
+ {
+  "name": "URL chars step 3",
+  "t": 37.5758,
+  "grid": "16th",
+  "nearest": 37.5758,
+  "beatIdx": 66.5,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": 7.533333333334724
+ },
+ {
+  "name": "URL chars step 4",
+  "t": 37.7126,
+  "grid": "16th",
+  "nearest": 37.7126,
+  "beatIdx": 66.75,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": 4.066666666666663
+ },
+ {
+  "name": "URL chars step 5",
+  "t": 37.8494,
+  "grid": "16th",
+  "nearest": 37.8494,
+  "beatIdx": 67,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": 0.5999999999986017
+ },
+ {
+  "name": "URL chars step 6",
+  "t": 37.994375000000005,
+  "grid": "16th",
+  "nearest": 37.994375000000005,
+  "beatIdx": 67.25,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": 5.624999999994884
+ },
+ {
+  "name": "URL chars step 7",
+  "t": 38.13935,
+  "grid": "16th",
+  "nearest": 38.13935,
+  "beatIdx": 67.5,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -6.016666666667447
+ },
+ {
+  "name": "URL chars step 8",
+  "t": 38.284324999999995,
+  "grid": "16th",
+  "nearest": 38.284324999999995,
+  "beatIdx": 67.75,
+  "err_ms": 0,
+  "down": false,
+  "frame_err_ms": -0.9916666666640594
+ },
+ {
+  "name": "credit line",
+  "t": 38.4293,
+  "grid": "beat",
+  "nearest": 38.4293,
+  "beatIdx": 68,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 4.033333333332223
+ },
+ {
+  "name": "end of film",
+  "t": 40.6934,
+  "grid": "beat",
+  "nearest": 40.6934,
+  "beatIdx": 72,
+  "err_ms": 0,
+  "down": true,
+  "frame_err_ms": 6.6000000000059345
+ }
+]

@@ -1,0 +1,22 @@
+event                    film s  onset s    err ms pass(+-20)
+pulse departs             2.265    2.262     -2.4   ok
+LCD hold end / morph start    6.785    6.788     +2.2   ok
+Today deal end = hop start    9.049    9.056     +6.8   ok
+通勤: hop start             9.049    9.056     +6.8   ok
+通勤: TAP                  11.308   11.317     +9.0   ok
+通勤: deal end             13.555   13.563     +8.1   ok
+運動: hop start            13.555   13.563     +8.1   ok
+運動: TAP                  15.834   15.841     +6.3   ok
+運動: deal end             18.094   18.103     +8.9   ok
+出遊: hop start            18.094   18.103     +8.9   ok
+出遊: TAP                  20.348   20.344     -3.5   ok
+出遊: deal end             22.615   22.623     +8.4   ok
+地點: hop start            22.615   22.623     +8.4   ok
+地點: TAP                  24.879   24.886     +6.6   ok
+地點: deal end             27.138   27.147     +8.5   ok
+LIGHT: hop start         27.138   27.147     +8.5   ok
+LIGHT: TAP               29.397   29.408    +10.7   ok
+arc reveal (fan)         31.659   31.657     -1.9   ok
+fold                     33.919   33.926     +7.7   ok
+title typing start       36.176   36.184     +8.7   ok
+n=20  within 20 ms: 20  mean +6.3 ms  max|err| 10.7 ms

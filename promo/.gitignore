@@ -1,0 +1,12 @@
+# generated / not redistributable -- see promo/README.md
+shots/
+out/
+frames/
+audio/*.m4a
+audio/*.mp3
+audio/*.wav
+audio/*.raw
+audio/beats_raw.json
+audio/beats.json
+audio/beats_log.txt
+*.mp4
