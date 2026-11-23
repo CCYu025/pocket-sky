@@ -1,0 +1,76 @@
+event                             film s   grid  nearest  beat#  err ms  downbeat 60fps-frame err
+sign on                           0.000    beat  0.000    0      0.0     YES      0.0
+benefit line                      0.552    beat  0.552    1      0.0     no       -2.4
+pulse departs                     2.265    beat  2.265    4      0.0     YES      2.0
+LCD arrive                        3.946    beat  3.946    7      0.0     no       4.2
+LCD count step 1 (=3)             4.526    8th   4.526    8      0.0     YES      7.3
+LCD count step 2 (=7)             4.808    8th   4.808    8.5    0.0     no       -7.6
+LCD count step 3 (=10)            5.089    8th   5.089    9      0.0     no       -5.9
+LCD count step 4 (=14)            5.372    8th   5.372    9.5    0.0     no       -5.2
+LCD count step 5 (=17)            5.655    8th   5.655    10     0.0     no       -4.6
+LCD count step 6 (=20)            5.930    8th   5.930    10.5   0.0     no       2.9
+LCD count step 7 (=23)            6.206    8th   6.206    11     0.0     no       -6.2
+LCD hold end / morph start        6.785    beat  6.785    12     0.0     YES      -2.2
+Today copy line                   7.339    beat  7.339    13     0.0     no       -5.4
+Today morph end                   7.921    beat  7.921    14     0.0     no       -4.4
+Today deal start                  8.469    beat  8.469    15     0.0     no       -2.4
+Today deal end = hop start        9.049    beat  9.049    16     0.0     YES      0.7
+通勤: hop start                     9.049    beat  9.049    16     0.0     YES      0.7
+通勤: arrival                       9.596    beat  9.596    17     0.0     no       4.1
+通勤: caption in                    9.596    beat  9.596    17     0.0     no       4.1
+通勤: TAP                           11.308   beat  11.308   20     0.0     YES      -8.3
+通勤: result line                   11.308   beat  11.308   20     0.0     YES      -8.3
+通勤: deal start                    12.988   beat  12.988   23     0.0     no       -4.8
+通勤: deal end                      13.555   beat  13.555   24     0.0     YES      -4.7
+運動: hop start                     13.555   beat  13.555   24     0.0     YES      -4.7
+運動: arrival                       14.123   beat  14.123   25     0.0     no       -5.8
+運動: caption in                    14.123   beat  14.123   25     0.0     no       -5.8
+運動: TAP                           15.834   beat  15.834   28     0.0     YES      -1.1
+運動: result line                   15.834   beat  15.834   28     0.0     YES      -1.1
+運動: deal start                    17.498   beat  17.498   31     0.0     no       2.4
+運動: deal end                      18.094   beat  18.094   32     0.0     YES      6.0
+出遊: hop start                     18.094   beat  18.094   32     0.0     YES      6.0
+出遊: arrival                       18.641   beat  18.641   33     0.0     no       -8.1
+出遊: caption in                    18.641   beat  18.641   33     0.0     no       -8.1
+出遊: TAP                           20.348   beat  20.348   36     0.0     YES      2.2
+出遊: result line                   20.348   beat  20.348   36     0.0     YES      2.2
+出遊: deal start                    22.034   beat  22.034   39     0.0     no       -0.4
+出遊: deal end                      22.615   beat  22.615   40     0.0     YES      2.0
+地點: hop start                     22.615   beat  22.615   40     0.0     YES      2.0
+地點: arrival                       23.162   beat  23.162   41     0.0     no       4.7
+地點: caption in                    23.162   beat  23.162   41     0.0     no       4.7
+地點: TAP                           24.879   beat  24.879   44     0.0     YES      4.0
+地點: result line                   24.879   beat  24.879   44     0.0     YES      4.0
+地點: deal start                    26.557   beat  26.557   47     0.0     no       -7.0
+地點: deal end                      27.138   beat  27.138   48     0.0     YES      -4.8
+LIGHT: hop start                  27.138   beat  27.138   48     0.0     YES      -4.8
+LIGHT: arrival                    27.685   beat  27.685   49     0.0     no       -2.1
+LIGHT: caption in                 27.685   beat  27.685   49     0.0     no       -2.1
+LIGHT: TAP                        29.397   beat  29.397   52     0.0     YES      2.7
+LIGHT: result line                29.397   beat  29.397   52     0.0     YES      2.7
+arc reveal (fan)                  31.659   beat  31.659   56     0.0     YES      7.7
+fold                              33.919   beat  33.919   60     0.0     YES      -2.0
+park slide start                  35.046   beat  35.046   62     0.0     no       4.1
+title typing start                36.176   beat  36.176   64     0.0     YES      7.6
+tagline                           36.721   beat  36.721   65     0.0     no       -4.4
+URL box sweep                     37.012   8th   37.012   65.5   0.0     no       5.0
+URL chars step 1                  37.302   16th  37.302   66     0.0     no       -2.2
+URL chars step 2                  37.439   16th  37.439   66.25  0.0     no       -5.7
+URL chars step 3                  37.576   16th  37.576   66.5   0.0     no       7.5
+URL chars step 4                  37.713   16th  37.713   66.75  0.0     no       4.1
+URL chars step 5                  37.849   16th  37.849   67     0.0     no       0.6
+URL chars step 6                  37.994   16th  37.994   67.25  0.0     no       5.6
+URL chars step 7                  38.139   16th  38.139   67.5   0.0     no       -6.0
+URL chars step 8                  38.284   16th  38.284   67.75  0.0     no       -1.0
+credit line                       38.429   beat  38.429   68     0.0     YES      4.0
+end of film                       40.693   beat  40.693   72     0.0     YES      6.6
+
+film duration 40.6934 s = 17.97 bars of the first bar length; bars by beats: 18
+通勤     hold(arr->holdE) 3.392 s  (>=2.8: ok)  tap-after-arrival 1.712  hop 0.547  period 4.505 s = 8.00 beats
+運動     hold(arr->holdE) 3.375 s  (>=2.8: ok)  tap-after-arrival 1.712  hop 0.568  period 4.539 s = 8.06 beats
+出遊     hold(arr->holdE) 3.392 s  (>=2.8: ok)  tap-after-arrival 1.706  hop 0.547  period 4.521 s = 8.03 beats
+地點     hold(arr->holdE) 3.395 s  (>=2.8: ok)  tap-after-arrival 1.717  hop 0.547  period 4.523 s = 8.03 beats
+LIGHT  hold(arr->holdE) 3.974 s  (>=2.8: ok)  tap-after-arrival 1.712  hop 0.547  period 4.521 s = 8.03 beats
+camera speed max 688.6 px/s at t=9.43 (limit 700); max during station holds 0.06 px/s
+determinism (12 frames, forward vs reverse order): IDENTICAL
+sheet times: 0.40 2.76 4.25 5.47 7.29 7.84 10.10 11.46 12.51 14.62 15.98 17.03 19.14 20.50 21.55 23.66 25.03 26.08 28.19 29.55 30.60 32.56 34.22 35.42 36.68 38.23 39.93 40.64
