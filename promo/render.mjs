@@ -4,7 +4,7 @@
  *
  *   node promo/render.mjs [--out promo/out/pocket-sky-promo-1080p60.mp4] [--width 1920] [--height 1080] [--fps 60]
  *                   [--from 0] [--to <film end>] [--crf 16] [--preset medium] [--variant 06]
- *                   [--audio promo/audio/song.m4a [--audio-start 86.8582] [--fade-in 1] [--fade-out 1] [--lufs -14] [--tp -1.5]]
+ *                   [--audio promo/audio/song.m4a [--audio-start 86.8582] [--fade-in 0.6] [--fade-out 1.13] [--lufs -14] [--tp -1.5]]
  *                   [--no-audio]                        (silent film; default is to add the music when the audio file exists)
  *                   [--remux <video.mp4> --out <new.mp4>]  (keep the video stream as is (-c:v copy), only replace the audio track)
  *                   [--still 12.5 --out frame.png]      (single PNG of one instant)
@@ -44,7 +44,7 @@ const FFMPEG = process.env.FFMPEG || "ffmpeg";
 const gridS = Number(/"S":\s*([\d.]+)/.exec(readFileSync(path.join(HERE, "variants/beatgrid-B.js"), "utf8"))?.[1] ?? 0);
 const audioFile = path.resolve(arg("audio", path.join(HERE, "audio", "song.m4a")));
 const audio = has("no-audio") ? null : (existsSync(audioFile) ? audioFile : (arg("audio") ? (console.error(`audio file not found: ${audioFile}`), process.exit(1)) : null));
-const audioStart = num("audio-start", gridS), fadeIn = num("fade-in", 1), fadeOut = num("fade-out", 1), lufs = num("lufs", -14), tp = num("tp", -1.5);
+const audioStart = num("audio-start", gridS), fadeIn = num("fade-in", 0.6), fadeOut = num("fade-out", 1.13), lufs = num("lufs", -14), tp = num("tp", -1.5);
 const variant = arg("variant", "06");
 
 /* ---------------------------------------------------------------- static server for render.html (needed: canvas + images over http) */
