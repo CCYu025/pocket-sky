@@ -16,7 +16,10 @@
     "smoke": "node tests/smoke/smoke.mjs",
     "build:site": "node scripts/build-site.mjs",
     "lighthouse": "node scripts/lighthouse.mjs",
-    "test:e2e": "node --test \"tests/e2e/**/*.e2e.mjs\""
+    "test:e2e": "node --test \"tests/e2e/**/*.e2e.mjs\"",
+    "promo:shots": "node promo/capture-shots.mjs",
+    "promo:preview": "node promo/render.mjs --width 960 --height 540 --fps 30 --crf 23 --preset veryfast --out promo/out/preview.mp4",
+    "promo:render": "node promo/render.mjs --out promo/out/pocket-sky-promo-1080p60-music.mp4"
   },
   "devDependencies": {
     "axe-core": "^4.14.1"
